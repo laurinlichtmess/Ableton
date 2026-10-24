@@ -1,0 +1,696 @@
+{
+ "schema_version": 1,
+ "engine_version": "0.1.0",
+ "source": {
+  "path": "/Users/demo/Music/reference.mp3",
+  "sha1": "d6d87418f4cf3332d910e7b8d888afda19f82730",
+  "duration_sec": 91.251,
+  "sample_rate": 22050
+ },
+ "tempo": {
+  "bpm": 128.0,
+  "confidence": 0.983,
+  "time_signature": [
+   4,
+   4
+  ],
+  "first_downbeat_sec": 0.2847,
+  "beat_sec": 0.46875,
+  "bar_sec": 1.875,
+  "num_bars": 49
+ },
+ "sections": [
+  {
+   "index": 0,
+   "label": "Intro",
+   "group": "A",
+   "start_bar": 0,
+   "end_bar": 8,
+   "bars": 8,
+   "start_beat": 0,
+   "length_beats": 32,
+   "start_sec": 0.285,
+   "end_sec": 15.285,
+   "energy": 0.473,
+   "trend_db_per_bar": 0.008
+  },
+  {
+   "index": 1,
+   "label": "Build",
+   "group": "B",
+   "start_bar": 8,
+   "end_bar": 16,
+   "bars": 8,
+   "start_beat": 32,
+   "length_beats": 32,
+   "start_sec": 15.285,
+   "end_sec": 30.285,
+   "energy": 0.641,
+   "trend_db_per_bar": 0.567
+  },
+  {
+   "index": 2,
+   "label": "Drop 1",
+   "group": "C",
+   "start_bar": 16,
+   "end_bar": 24,
+   "bars": 8,
+   "start_beat": 64,
+   "length_beats": 32,
+   "start_sec": 30.285,
+   "end_sec": 45.285,
+   "energy": 0.924,
+   "trend_db_per_bar": -0.042
+  },
+  {
+   "index": 3,
+   "label": "Breakdown",
+   "group": "A",
+   "start_bar": 24,
+   "end_bar": 32,
+   "bars": 8,
+   "start_beat": 96,
+   "length_beats": 32,
+   "start_sec": 45.285,
+   "end_sec": 60.285,
+   "energy": 0.352,
+   "trend_db_per_bar": 0.072
+  },
+  {
+   "index": 4,
+   "label": "Drop 2",
+   "group": "C",
+   "start_bar": 32,
+   "end_bar": 40,
+   "bars": 8,
+   "start_beat": 128,
+   "length_beats": 32,
+   "start_sec": 60.285,
+   "end_sec": 75.285,
+   "energy": 0.925,
+   "trend_db_per_bar": -0.026
+  },
+  {
+   "index": 5,
+   "label": "Drop 3",
+   "group": "D",
+   "start_bar": 40,
+   "end_bar": 44,
+   "bars": 4,
+   "start_beat": 160,
+   "length_beats": 16,
+   "start_sec": 75.285,
+   "end_sec": 82.785,
+   "energy": 0.835,
+   "trend_db_per_bar": -3.89
+  },
+  {
+   "index": 6,
+   "label": "Outro",
+   "group": "D",
+   "start_bar": 44,
+   "end_bar": 49,
+   "bars": 5,
+   "start_beat": 176,
+   "length_beats": 20,
+   "start_sec": 82.785,
+   "end_sec": 91.251,
+   "energy": 0.182,
+   "trend_db_per_bar": -13.247
+  }
+ ],
+ "separation": "bands",
+ "stems": [
+  {
+   "name": "drums",
+   "separation": "bands",
+   "present": true,
+   "level_db": -33.1,
+   "active_sections": [
+    true,
+    true,
+    true,
+    false,
+    true,
+    true,
+    true
+   ],
+   "automation": [
+    {
+     "target": "filter_cutoff",
+     "device": "Auto Filter",
+     "class_name": "AutoFilter",
+     "parameter": "Frequency",
+     "unit": "Hz",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 699.83
+      },
+      {
+       "beat": 1.0,
+       "value": 452.2
+      },
+      {
+       "beat": 9.0,
+       "value": 419.9
+      },
+      {
+       "beat": 11.0,
+       "value": 479.11
+      },
+      {
+       "beat": 13.0,
+       "value": 441.43
+      },
+      {
+       "beat": 16.0,
+       "value": 468.35
+      },
+      {
+       "beat": 17.0,
+       "value": 446.81
+      },
+      {
+       "beat": 19.0,
+       "value": 425.28
+      },
+      {
+       "beat": 27.0,
+       "value": 446.81
+      },
+      {
+       "beat": 31.0,
+       "value": 506.03
+      },
+      {
+       "beat": 33.0,
+       "value": 457.58
+      },
+      {
+       "beat": 34.0,
+       "value": 430.66
+      },
+      {
+       "beat": 35.0,
+       "value": 457.58
+      },
+      {
+       "beat": 36.0,
+       "value": 495.26
+      },
+      {
+       "beat": 39.0,
+       "value": 543.71
+      },
+      {
+       "beat": 40.0,
+       "value": 651.38
+      },
+      {
+       "beat": 41.0,
+       "value": 699.83
+      },
+      {
+       "beat": 42.0,
+       "value": 839.79
+      },
+      {
+       "beat": 43.0,
+       "value": 931.31
+      },
+      {
+       "beat": 44.0,
+       "value": 1055.13
+      },
+      {
+       "beat": 45.0,
+       "value": 1232.78
+      },
+      {
+       "beat": 46.0,
+       "value": 1453.49
+      },
+      {
+       "beat": 47.0,
+       "value": 1690.36
+      },
+      {
+       "beat": 48.0,
+       "value": 1954.14
+      },
+      {
+       "beat": 49.0,
+       "value": 2147.94
+      },
+      {
+       "beat": 50.0,
+       "value": 2514.0
+      },
+      {
+       "beat": 51.0,
+       "value": 2928.52
+      },
+      {
+       "beat": 52.0,
+       "value": 3413.01
+      },
+      {
+       "beat": 53.0,
+       "value": 3892.13
+      },
+      {
+       "beat": 54.0,
+       "value": 4527.36
+      },
+      {
+       "beat": 55.0,
+       "value": 4818.05
+      },
+      {
+       "beat": 56.0,
+       "value": 5167.97
+      },
+      {
+       "beat": 57.0,
+       "value": 5900.1
+      },
+      {
+       "beat": 58.0,
+       "value": 6648.38
+      },
+      {
+       "beat": 59.0,
+       "value": 7482.79
+      },
+      {
+       "beat": 60.0,
+       "value": 7983.44
+      },
+      {
+       "beat": 61.0,
+       "value": 8408.72
+      },
+      {
+       "beat": 62.0,
+       "value": 20000.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 34,
+       "end_beat": 62,
+       "from": 443.9,
+       "to": 8193.3,
+       "direction": "up"
+      }
+     ]
+    },
+    {
+     "target": "gain",
+     "device": "Utility",
+     "class_name": "StereoGain",
+     "parameter": "Gain",
+     "unit": "dB",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 0.0
+      },
+      {
+       "beat": 161.0,
+       "value": -1.19
+      },
+      {
+       "beat": 162.0,
+       "value": -2.11
+      },
+      {
+       "beat": 165.0,
+       "value": -5.16
+      },
+      {
+       "beat": 166.0,
+       "value": -6.14
+      },
+      {
+       "beat": 170.0,
+       "value": -9.4
+      },
+      {
+       "beat": 172.0,
+       "value": -10.4
+      },
+      {
+       "beat": 173.0,
+       "value": -11.51
+      },
+      {
+       "beat": 174.0,
+       "value": -12.92
+      },
+      {
+       "beat": 176.0,
+       "value": -14.21
+      },
+      {
+       "beat": 177.0,
+       "value": -16.44
+      },
+      {
+       "beat": 178.0,
+       "value": -17.43
+      },
+      {
+       "beat": 181.0,
+       "value": -20.25
+      },
+      {
+       "beat": 183.0,
+       "value": -21.09
+      },
+      {
+       "beat": 186.0,
+       "value": -24.65
+      },
+      {
+       "beat": 189.0,
+       "value": -26.67
+      },
+      {
+       "beat": 190.0,
+       "value": -27.91
+      },
+      {
+       "beat": 191.0,
+       "value": -33.0
+      },
+      {
+       "beat": 192.0,
+       "value": 0.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 160,
+       "end_beat": 192,
+       "from": -35.7,
+       "to": -66.1,
+       "direction": "down"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "bass",
+   "separation": "bands",
+   "present": true,
+   "level_db": -21.7,
+   "active_sections": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true
+   ],
+   "automation": [
+    {
+     "target": "gain",
+     "device": "Utility",
+     "class_name": "StereoGain",
+     "parameter": "Gain",
+     "unit": "dB",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 0.0
+      },
+      {
+       "beat": 162.0,
+       "value": -1.26
+      },
+      {
+       "beat": 164.0,
+       "value": -3.42
+      },
+      {
+       "beat": 165.0,
+       "value": -4.95
+      },
+      {
+       "beat": 168.0,
+       "value": -6.51
+      },
+      {
+       "beat": 169.0,
+       "value": -8.35
+      },
+      {
+       "beat": 172.0,
+       "value": -10.75
+      },
+      {
+       "beat": 173.0,
+       "value": -12.4
+      },
+      {
+       "beat": 174.0,
+       "value": -13.52
+      },
+      {
+       "beat": 177.0,
+       "value": -15.48
+      },
+      {
+       "beat": 178.0,
+       "value": -16.3
+      },
+      {
+       "beat": 180.0,
+       "value": -18.49
+      },
+      {
+       "beat": 181.0,
+       "value": -19.93
+      },
+      {
+       "beat": 182.0,
+       "value": -20.82
+      },
+      {
+       "beat": 185.0,
+       "value": -23.37
+      },
+      {
+       "beat": 187.0,
+       "value": -24.16
+      },
+      {
+       "beat": 188.0,
+       "value": -25.74
+      },
+      {
+       "beat": 189.0,
+       "value": -27.38
+      },
+      {
+       "beat": 190.0,
+       "value": -28.42
+      },
+      {
+       "beat": 191.0,
+       "value": -29.23
+      },
+      {
+       "beat": 192.0,
+       "value": 0.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 160,
+       "end_beat": 192,
+       "from": -23.4,
+       "to": -52.2,
+       "direction": "down"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "other",
+   "separation": "bands",
+   "present": true,
+   "level_db": -26.1,
+   "active_sections": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false
+   ],
+   "automation": [
+    {
+     "target": "filter_cutoff",
+     "device": "Auto Filter",
+     "class_name": "AutoFilter",
+     "parameter": "Frequency",
+     "unit": "Hz",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 333.76
+      },
+      {
+       "beat": 39.0,
+       "value": 441.43
+      },
+      {
+       "beat": 41.0,
+       "value": 559.86
+      },
+      {
+       "beat": 42.0,
+       "value": 656.76
+      },
+      {
+       "beat": 44.0,
+       "value": 829.03
+      },
+      {
+       "beat": 45.0,
+       "value": 872.09
+      },
+      {
+       "beat": 46.0,
+       "value": 990.53
+      },
+      {
+       "beat": 47.0,
+       "value": 1098.19
+      },
+      {
+       "beat": 48.0,
+       "value": 1313.53
+      },
+      {
+       "beat": 49.0,
+       "value": 1388.89
+      },
+      {
+       "beat": 50.0,
+       "value": 1641.91
+      },
+      {
+       "beat": 51.0,
+       "value": 1754.96
+      },
+      {
+       "beat": 52.0,
+       "value": 1986.44
+      },
+      {
+       "beat": 53.0,
+       "value": 2260.99
+      },
+      {
+       "beat": 54.0,
+       "value": 2637.82
+      },
+      {
+       "beat": 55.0,
+       "value": 2960.82
+      },
+      {
+       "beat": 56.0,
+       "value": 3079.25
+      },
+      {
+       "beat": 57.0,
+       "value": 3617.58
+      },
+      {
+       "beat": 58.0,
+       "value": 4150.52
+      },
+      {
+       "beat": 59.0,
+       "value": 4446.61
+      },
+      {
+       "beat": 60.0,
+       "value": 5065.69
+      },
+      {
+       "beat": 61.0,
+       "value": 5539.42
+      },
+      {
+       "beat": 62.0,
+       "value": 5953.93
+      },
+      {
+       "beat": 63.0,
+       "value": 20000.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 37,
+       "end_beat": 63,
+       "from": 339.1,
+       "to": 5742.9,
+       "direction": "up"
+      }
+     ]
+    }
+   ]
+  }
+ ],
+ "suggested_devices": [
+  {
+   "stem": "drums",
+   "device": "Auto Filter",
+   "class_name": "AutoFilter",
+   "automation_target": "filter_cutoff",
+   "reason": "1 Cutoff-Sweep(s) erkannt: Takt 9-15"
+  },
+  {
+   "stem": "drums",
+   "device": "Utility",
+   "class_name": "StereoGain",
+   "automation_target": "gain",
+   "reason": "1 Fade(s) erkannt: Takt 41-48"
+  },
+  {
+   "stem": "bass",
+   "device": "Utility",
+   "class_name": "StereoGain",
+   "automation_target": "gain",
+   "reason": "1 Fade(s) erkannt: Takt 41-48"
+  },
+  {
+   "stem": "other",
+   "device": "Auto Filter",
+   "class_name": "AutoFilter",
+   "automation_target": "filter_cutoff",
+   "reason": "1 Cutoff-Sweep(s) erkannt: Takt 10-15"
+  }
+ ],
+ "hints": [
+  {
+   "type": "sidechain_pump",
+   "depth_db": 4.7,
+   "release_beats": 0.312,
+   "stem": "other",
+   "message": "other: beat-synchrones Pumpen (~4.7 dB) - Sidechain-Kompressor von der Kick empfohlen"
+  }
+ ],
+ "warnings": []
+}

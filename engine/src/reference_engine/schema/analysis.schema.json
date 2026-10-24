@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://reference-rebuilder.local/analysis.schema.json",
+  "title": "Reference Rebuilder Analyse",
+  "description": "Positionen in Beats (Viertel) relativ zum ersten Taktanfang der Referenz (= Arrangement-Position 1.1.1 in Live).",
+  "type": "object",
+  "required": ["schema_version", "engine_version", "source", "tempo", "sections", "separation", "stems", "suggested_devices", "hints", "warnings"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "engine_version": {"type": "string"},
+    "source": {
+      "type": "object",
+      "required": ["path", "duration_sec", "sample_rate"],
+      "properties": {
+        "path": {"type": "string"},
+        "sha1": {"type": ["string", "null"]},
+        "duration_sec": {"type": "number", "minimum": 0},
+        "sample_rate": {"type": "integer"}
+      }
+    },
+    "tempo": {
+      "type": "object",
+      "required": ["bpm", "confidence", "time_signature", "first_downbeat_sec", "beat_sec", "bar_sec", "num_bars"],
+      "properties": {
+        "bpm": {"type": "number", "minimum": 20, "maximum": 999},
+        "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "time_signature": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2},
+        "first_downbeat_sec": {"type": "number", "minimum": 0},
+        "beat_sec": {"type": "number", "exclusiveMinimum": 0},
+        "bar_sec": {"type": "number", "exclusiveMinimum": 0},
+        "num_bars": {"type": "integer", "minimum": 1}
+      }
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["index", "label", "group", "start_bar", "end_bar", "bars", "start_beat", "length_beats", "start_sec", "end_sec", "energy"],
+        "properties": {
+          "index": {"type": "integer", "minimum": 0},
+          "label": {"type": "string", "minLength": 1},
+          "group": {"type": "string", "pattern": "^[A-Z]$"},
+          "start_bar": {"type": "integer", "minimum": 0},
+          "end_bar": {"type": "integer", "minimum": 1},
+          "bars": {"type": "integer", "minimum": 1},
+          "start_beat": {"type": "number", "minimum": 0},
+          "length_beats": {"type": "number", "exclusiveMinimum": 0},
+          "start_sec": {"type": "number"},
+          "end_sec": {"type": "number"},
+          "energy": {"type": "number", "minimum": 0, "maximum": 1},
+          "trend_db_per_bar": {"type": "number"}
+        }
+      }
+    },
+    "separation": {"enum": ["demucs", "bands"]},
+    "stems": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["name", "separation", "present", "level_db", "active_sections", "automation"],
+        "properties": {
+          "name": {"type": "string"},
+          "separation": {"enum": ["demucs", "bands"]},
+          "present": {"type": "boolean", "description": "false = Stem praktisch stumm (nur Uebersprechen)"},
+          "level_db": {"type": "number"},
+          "active_sections": {"type": "array", "items": {"type": "boolean"}},
+          "automation": {"type": "array", "items": {"$ref": "#/$defs/automation"}}
+        }
+      }
+    },
+    "suggested_devices": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["stem", "device", "class_name", "automation_target", "reason"],
+        "properties": {
+          "stem": {"type": "string"},
+          "device": {"enum": ["Auto Filter", "Utility"]},
+          "class_name": {"enum": ["AutoFilter", "StereoGain"]},
+          "automation_target": {"enum": ["filter_cutoff", "gain"]},
+          "reason": {"type": "string"}
+        }
+      }
+    },
+    "hints": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["type", "stem", "message"],
+        "properties": {
+          "type": {"enum": ["sidechain_pump"]},
+          "stem": {"type": "string"},
+          "message": {"type": "string"},
+          "depth_db": {"type": "number"},
+          "release_beats": {"type": "number"}
+        }
+      }
+    },
+    "warnings": {"type": "array", "items": {"type": "string"}}
+  },
+  "$defs": {
+    "automation": {
+      "type": "object",
+      "required": ["target", "device", "class_name", "parameter", "unit", "points", "ramps"],
+      "properties": {
+        "target": {"enum": ["filter_cutoff", "gain"]},
+        "device": {"type": "string"},
+        "class_name": {"type": "string"},
+        "parameter": {"type": "string"},
+        "unit": {"enum": ["Hz", "dB"]},
+        "points": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["beat", "value"],
+            "properties": {"beat": {"type": "number", "minimum": 0}, "value": {"type": "number"}}
+          }
+        },
+        "ramps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["start_beat", "end_beat", "from", "to", "direction"],
+            "properties": {
+              "start_beat": {"type": "integer"},
+              "end_beat": {"type": "integer"},
+              "from": {"type": "number"},
+              "to": {"type": "number"},
+              "direction": {"enum": ["up", "down"]}
+            }
+          }
+        }
+      }
+    }
+  }
+}
