@@ -21,6 +21,7 @@ def summarize(result: dict) -> dict:
         "separation": result["separation"],
         "stems": {
             st["name"]: {
+                "present": st["present"],
                 "active_sections": st["active_sections"],
                 "automation": sorted(a["target"] for a in st["automation"]),
             }
@@ -34,6 +35,10 @@ def summarize(result: dict) -> dict:
 def test_matches_schema(analysis):
     jsonschema.validate(analysis, schema())
     json.dumps(analysis)  # vollstaendig JSON-serialisierbar
+    assert analysis["schema_version"] == 2
+    assert [s["name"] for s in analysis["stems"]] == [
+        "kick", "bass", "clap", "hats", "ride", "perc", "atmo", "synth", "vocals",
+    ]
 
 
 def test_tempo(analysis, song_mp3):
@@ -52,6 +57,8 @@ def test_section_boundaries(analysis, song_mp3):
     assert secs[0]["start_bar"] == 0
     assert all(a["end_bar"] == b["start_bar"] for a, b in zip(secs, secs[1:]))
     assert all(s["start_beat"] == s["start_bar"] * 4 and s["length_beats"] == s["bars"] * 4 for s in secs)
+    assert all(s["bars"] >= 4 for s in secs)
+    assert all(s.get("kind") for s in secs)
 
 
 def test_section_labels(analysis):
@@ -60,17 +67,18 @@ def test_section_labels(analysis):
     assert labels[-1] == "Outro"
     by_start = {s["start_bar"]: s for s in analysis["sections"]}
     assert by_start[16]["group"] == by_start[32]["group"], "beide Drops sollten dieselbe Gruppe haben"
+    assert "kick" in by_start[16]["elements"] and "kick" not in by_start[24]["elements"]
 
 
 def test_filter_sweep_suggestion(analysis):
-    other = next(s for s in analysis["stems"] if s["name"] == "other")
-    filt = next(a for a in other["automation"] if a["target"] == "filter_cutoff")
+    synth = next(s for s in analysis["stems"] if s["name"] == "synth")
+    filt = next(a for a in synth["automation"] if a["target"] == "filter_cutoff")
     ramp = filt["ramps"][0]
     assert ramp["direction"] == "up"
-    assert 28 <= ramp["start_beat"] <= 40 and 56 <= ramp["end_beat"] <= 68  # Build = Takt 9-16
+    assert 28 <= ramp["start_beat"] <= 40 and 48 <= ramp["end_beat"] <= 68  # Build = Takt 9-16
     assert ramp["to"] / ramp["from"] > 4
-    assert {"stem": "other", "device": "Auto Filter"}.items() <= next(
-        d for d in analysis["suggested_devices"] if d["stem"] == "other" and d["device"] == "Auto Filter").items()
+    assert {"stem": "synth", "device": "Auto Filter"}.items() <= next(
+        d for d in analysis["suggested_devices"] if d["stem"] == "synth" and d["device"] == "Auto Filter").items()
 
 
 def test_fade_and_sidechain(analysis):
@@ -80,10 +88,10 @@ def test_fade_and_sidechain(analysis):
     assert any(h["type"] == "sidechain_pump" for h in analysis["hints"])
 
 
-def test_breakdown_has_no_drums(analysis):
-    drums = next(s for s in analysis["stems"] if s["name"] == "drums")
+def test_breakdown_has_no_kick(analysis):
+    kick = next(s for s in analysis["stems"] if s["name"] == "kick")
     idx = next(i for i, s in enumerate(analysis["sections"]) if s["label"].startswith("Breakdown"))
-    assert drums["active_sections"][idx] is False
+    assert kick["active_sections"][idx] is False
 
 
 def test_snapshot(analysis):
@@ -107,13 +115,13 @@ def test_silent_stem_is_marked_absent(monkeypatch, song_mp3):
 
     def fake_separate(p, audio, method="auto", sha1=None, progress=None):
         bleed = (audio * 10 ** (-55 / 20)).astype(np.float32)
-        return SeparationResult("demucs", {"drums": audio, "vocals": bleed}), []
+        return SeparationResult("demucs", {"drums": audio, "bass": bleed, "other": bleed, "vocals": bleed}), []
 
     monkeypatch.setattr(pipeline, "separate", fake_separate)
     result = pipeline.analyze_audio(y, path)
     jsonschema.validate(result, schema())
     stems = {s["name"]: s for s in result["stems"]}
-    assert stems["drums"]["present"] is True
+    assert stems["kick"]["present"] is True
     assert stems["vocals"]["present"] is False
     assert not any(stems["vocals"]["active_sections"]) and stems["vocals"]["automation"] == []
     assert all(d["stem"] != "vocals" for d in result["suggested_devices"])

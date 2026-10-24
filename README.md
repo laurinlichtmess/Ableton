@@ -66,11 +66,11 @@ Liegt deine User Library woanders (Live: *Einstellungen › Library*), so:
 2. MP3 auf das Drop-Feld ziehen und **Analysieren** klicken. Die Engine wird bei Bedarf automatisch gestartet;
    mit Demucs dauert die Analyse je nach Mac einige Minuten (Fortschritt in der Statuszeile). Ergebnisse
    werden pro Datei zwischengespeichert (`~/.cache/reference-rebuilder`).
-3. Rechts erscheinen Tempo, Songteile (z. B. Intro, Build, Drop, Breakdown, Outro), die Zuordnung der Stems zu
-   deinen Spuren und Effekt-Vorschläge.
-4. **Stem → Spur**: Die Zuordnung erfolgt automatisch nach Spurnamen (z. B. „Kick/Drums“ → drums, „Sub/Bass“ →
-   bass, „Lead/Pad/Synth“ → other, „Vox/Vocal“ → vocals) und lässt sich pro Stem im Menü ändern
-   („Keine“ = Stem ignorieren). **Spuren** aktualisiert die Liste.
+3. Rechts erscheinen Tempo, Songteile (z. B. Intro, Build, Drop, Breakdown, Outro), die Zuordnung der
+   Elemente zu deinen Spuren und Effekt-Vorschläge.
+4. **Element → Spur**: Die Zuordnung erfolgt automatisch nach Spurnamen
+   (Kick, Bass, Clap/Snare, Hats, Ride, Perc, Atmo/Pads, Synth/Lead, Vocals) und lässt sich pro Element
+   im Menü ändern („Keine“ = ignorieren). **Spuren** aktualisiert die Liste.
 5. Optionen:
    - **Arrangement anlegen**: Locators an jedem Songteil, Clips pro Songteil auf den zugeordneten Spuren
      (nur dort, wo der Stem in der Referenz spielt)
@@ -118,13 +118,15 @@ Das Ergebnis folgt `engine/src/reference_engine/schema/analysis.schema.json`: `t
 `stems[].automation[]` (Breakpoints in Beats), `stems[].active_sections`, `suggested_devices`, `hints`
 (z. B. Sidechain-Pumpen) und `warnings`.
 
-Verfahren in Kürze: Beat-Tracking mit librosa und Fit eines konstanten Rasters (Takt 1 über die tiefen
-Onsets/Kick), Novelty-Segmentierung auf Taktebene (Klangfarbe, Energie, Dichte) mit Bevorzugung von
-4/8-Takt-Phrasen, Benennung über Energie- und Trend-Heuristik, Stems mit Demucs (`htdemucs`), Filterkurven
-aus dem spektralen Rolloff (nur bei erkannten Sweeps), Fades aus RMS-Rampen, Sidechain-Hinweis aus
-beat-synchroner Pegelmodulation.
+Verfahren in Kürze: Fourier-Tempogramm mit metrischer Bewertung und Prior für elektronische Musik
+(~128 BPM; optional `bpm_hint` / `bpm_min`/`bpm_max` per API/CLI), Taktanfang über Takt-zu-Takt-Klangwechsel;
+Segmentierung per dynamischer Programmierung auf dem 4-Takt-Raster (bevorzugt 8/16/32), Labels über
+Kick/Bass/Energie (Breakdown = ohne Kick, Build = ansteigend); Demucs-Stems (`htdemucs`, Gerät: MPS → CUDA → CPU)
+plus spektrale Element-Masken (Kick/Bass/Clap/Hats/Ride/Perc/Atmo/Synth/Vocals) mit Presence pro Takt und
+Filter-/Gain-Kurven; Sidechain-Hinweis aus beat-synchroner Pegelmodulation. Fortschritt während Demucs
+wird gemeldet; Stems landen im Cache.
 
-Umgebungsvariablen: `REFERENCE_ENGINE_DEMUCS_DEVICE` (`cpu` Standard, `mps` für Apple-GPU – experimentell),
+Umgebungsvariablen: `REFERENCE_ENGINE_DEMUCS_DEVICE` (sonst automatisch `mps`/`cuda`/`cpu`),
 `REFERENCE_ENGINE_DEMUCS_MODEL` (Standard `htdemucs`), `REFERENCE_ENGINE_CACHE`.
 
 ## Ports
@@ -145,8 +147,9 @@ node --test m4l/tests/*.test.js              # Device-Logik (Node 18+)
 python3 m4l/build_device.py                  # .amxd/.maxpat nach Änderungen am Patch neu erzeugen
 ```
 
-- Die Engine-Tests erzeugen synthetische Songs mit bekannten Abschnitten, Filter-Sweeps, Fades und Pumpen
-  (`engine/tests/synth.py`) und prüfen Tempo, Grenzen, Namen, Vorschläge und einen JSON-Snapshot
+- Die Engine-Tests erzeugen synthetische Songs (`engine/tests/synth.py`) und Hardgroove-Signale
+  (`engine/tests/groove.py`, u. a. 147 BPM mit dichter Percussion gegen 2/3-Tempo-Fehler) und prüfen Tempo,
+  Elemente (Kick vs. Bass, Ride, Clap, Pad), Songteile, Vorschläge und einen JSON-Snapshot
   (`UPDATE_SNAPSHOTS=1` aktualisiert ihn).
 - Die Device-Tests führen `live_bridge.js` gegen ein nachgebautes Live-11-Objektmodell aus
   (`m4l/tests/fake_lom.js`) – inklusive kompletter Abläufe „Analysieren → Anwenden“.
@@ -163,8 +166,8 @@ Aufbau des Devices: `rr_node.js` (Node for Max) enthält Ablauf und Netzwerk, `r
 - **Arrangement wird überschrieben:** `duplicate_clip_to_arrangement` ersetzt vorhandenes Material an
   derselben Stelle der Spur. Am besten in ein leeres Arrangement bzw. auf leere Spuren bauen.
 - **Taktart:** Es wird 4/4 angenommen; Tempowechsel innerhalb der Referenz werden nicht abgebildet.
-- **Ohne Demucs** (`--no-stems`) ist die Trennung grob (Perkussion/Bass/Rest, keine Vocals); Kick-Anteile
-  landen im Bass, Sweeps können auf mehreren Stems erkannt werden.
+- **Ohne Demucs** (`--no-stems`) entfallen Vocals; Elemente kommen aus dem Mix (Kick/Bass-Trennung und
+  Atmo/Synth sind ungenauer). Mit Demucs bleiben Drum-Unterelemente spektral (kein separates Drumsep-Modell).
 - **Heuristiken:** Songteil-Namen und Sweep-/Fade-Erkennung sind Heuristiken und müssen bei echten Songs ggf.
   von Hand korrigiert werden.
 - **Effekte:** In dieser Version nur Auto Filter (Frequency) und Utility (Gain). Sidechain wird nur als

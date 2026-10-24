@@ -169,7 +169,11 @@ def element_signals(stems: dict[str, np.ndarray], mix: np.ndarray, method: str, 
     drum_src = "drums" if separated else "mix"
     # Kick-Obertoene/Klick am Anschlag nicht als Percussion zaehlen.
     kick_short = 1.0 - 0.9 * _event_mask(onsets, n, 1, lead=1)[None, :]
-    yield ElementSignal("clap", P * _soft_band(freqs, 900.0, 5000.0), drum_src)
+    clap_band = P * _soft_band(freqs, 1200.0, 4500.0)
+    clap_env = librosa.onset.onset_strength(S=librosa.amplitude_to_db(clap_band + 1e-8), sr=sr, hop_length=hop)
+    clap_env = clap_env / (clap_env.max() + 1e-9)
+    clap_gate = np.clip(maximum_filter1d(clap_env, size=max(1, beat_frames // 2), mode="nearest"), 0, 1)
+    yield ElementSignal("clap", clap_band * clap_gate[None, :], drum_src)
     yield ElementSignal("perc", P * _soft_band(freqs, 150.0, 800.0) * kick_short, drum_src)
     del P
 
@@ -186,9 +190,9 @@ def element_signals(stems: dict[str, np.ndarray], mix: np.ndarray, method: str, 
         O = _mag(stems["other"], hop)[:, :n]
         other_src = "other"
     else:
-        # Strenge Trennung und ohne Tiefmitten: tonale Percussion/Bass sollen nicht als Synth zaehlen.
+        # Strenge Trennung: Pads ab ~180 Hz, ohne Kick/Bass-Grundton.
         H, _ = librosa.decompose.hpss(_mag(mix, hop), kernel_size=(17, 31), margin=(3.0, 1.0))
-        O = H.astype(np.float32) * _soft_band(freqs, 400.0, 2500.0)
+        O = H.astype(np.float32) * _soft_band(freqs, 180.0, 3000.0)
         other_src = "mix"
     held = _opening(O, max(3, int(round(1.5 * sr / hop))))
     yield ElementSignal("atmo", held, other_src)
@@ -216,6 +220,9 @@ def presence_from_levels(bar_db: np.ndarray, name: str, separated: bool = True) 
     if bar_db.size == 0:
         return np.zeros(0, dtype=bool), -100.0
     loud = float(np.percentile(bar_db, 90))
+    # Praktisch stumm (nur Rundungsrauschen): sonst waere loud-rel immer erfuellt.
+    if loud < -80.0:
+        return np.zeros(len(bar_db), dtype=bool), loud
     rel = PRESENT_REL_DB.get(name, 15.0) if separated else PRESENT_REL_DB_MIX.get(name, PRESENT_REL_DB.get(name, 15.0))
     present = bar_db > loud - rel
     if present.size >= 3:
