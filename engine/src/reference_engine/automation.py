@@ -51,9 +51,13 @@ def per_beat(x: np.ndarray, grid: BeatGrid, sr: int, hop: int, fn=np.median) -> 
 
 
 def stem_curves(y: np.ndarray, grid: BeatGrid, sr: int = ANALYSIS_SR, hop: int = HOP) -> StemCurves:
-    S = np.abs(librosa.stft(y, n_fft=2048, hop_length=hop))
+    return curves_from_mag(np.abs(librosa.stft(y, n_fft=2048, hop_length=hop)), grid, sr, hop)
+
+
+def curves_from_mag(S: np.ndarray, grid: BeatGrid, sr: int = ANALYSIS_SR, hop: int = HOP) -> StemCurves:
+    """Kurven aus einem Betragsspektrum (n_fft=2048), z. B. einem maskierten Element."""
     rms = librosa.feature.rms(S=S, frame_length=2048)[0]
-    rolloff = librosa.feature.spectral_rolloff(S=S, sr=sr, roll_percent=0.9)[0]
+    rolloff = librosa.feature.spectral_rolloff(S=S, sr=sr, n_fft=2048, roll_percent=0.9)[0]
     rms_db = db(per_beat(rms, grid, sr, hop, np.mean))
     level = float(np.percentile(rms_db, 95)) if rms_db.size else -100.0
     active = rms_db > level + SILENCE_DB

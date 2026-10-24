@@ -273,6 +273,98 @@ def test_node_client_talks_to_python_server():
     assert song.tracks[1].devices[0].class_name == "StereoGain"
 
 
+class Param:
+    def __init__(self, name, lo, hi):
+        self.name, self.min, self.max = name, lo, hi
+
+
+class Envelope:
+    def __init__(self):
+        self.steps = []
+
+    def insert_step(self, time, length, value):
+        self.steps.append((time, length, value))
+
+
+class Clip:
+    """Wie Live.Clip.Clip (Python-API): automation_envelope liefert None, wenn keine existiert."""
+
+    def __init__(self, name="Build", can_create=True):
+        self.name = name
+        self.envelopes = {}
+        self.can_create = can_create
+
+    def automation_envelope(self, param):
+        return self.envelopes.get(id(param))
+
+    def create_automation_envelope(self, param):
+        if not self.can_create:
+            return None
+        if id(param) in self.envelopes:
+            raise RuntimeError("Envelope existiert bereits")
+        self.envelopes[id(param)] = Envelope()
+        return self.envelopes[id(param)]
+
+
+class Slot:
+    def __init__(self, clip=None):
+        self.clip = clip
+
+    @property
+    def has_clip(self):
+        return self.clip is not None
+
+
+def make_envelope_song(clip):
+    freq = Param("Frequency", 0.0, 1.0)
+    autofilter = Device("Auto Filter", "AutoFilter")
+    autofilter.parameters = [Param("Device On", 0, 1), freq]
+    track = Track("Lead", [autofilter])
+    track.clip_slots = [Slot(), Slot(clip)]
+    song = types.SimpleNamespace(tracks=[track], view=View())
+    handler = CommandHandler(lambda: song, lambda: App(Browser(song)), log=[].append)
+    return handler, freq
+
+
+def test_write_envelope_creates_clamps_and_appends():
+    clip = Clip()
+    handler, freq = make_envelope_song(clip)
+    msg = {"id": "w", "cmd": "write_envelope", "track_index": 0, "scene_index": 1, "device_index": 0,
+           "parameter_index": 1, "steps": [[0, 4, 0.25], [4, 4, 1.7], ["8", 4, -3]]}
+    r = handler.handle(msg)
+    assert r == {"id": "w", "ok": True, "steps_written": 3, "parameter": "Frequency", "clip": "Build"}
+    env = clip.envelopes[id(freq)]
+    assert env.steps == [(0.0, 4.0, 0.25), (4.0, 4.0, 1.0), (8.0, 4.0, 0.0)], "auf min/max geklemmt"
+    r = handler.handle(dict(msg, steps=[[12, 4, 0.5]]))
+    assert r["ok"], "vorhandene Envelope wird weiterverwendet statt neu angelegt"
+    assert len(env.steps) == 4
+
+
+@pytest.mark.parametrize("change,error", [
+    ({"scene_index": 0}, "Kein Clip"),
+    ({"scene_index": 7}, "Clip-Slot 7 existiert nicht"),
+    ({"device_index": 3}, "Device 3 existiert nicht"),
+    ({"parameter_index": "x"}, "parameter_index"),
+    ({"steps": None}, "steps fehlt"),
+    ({"steps": [[0, 4]]}, "Ungueltiger Schritt"),
+    ({"track_index": 4}, "existiert nicht"),
+])
+def test_write_envelope_errors(change, error):
+    handler, _ = make_envelope_song(Clip())
+    msg = {"cmd": "write_envelope", "track_index": 0, "scene_index": 1, "device_index": 0,
+           "parameter_index": 1, "steps": [[0, 4, 0.5]]}
+    msg.update(change)
+    r = handler.handle(msg)
+    assert r["ok"] is False and error in r["error"], r
+
+
+def test_write_envelope_reports_when_live_refuses():
+    handler, _ = make_envelope_song(Clip(can_create=False))
+    r = handler.handle({"cmd": "write_envelope", "track_index": 0, "scene_index": 1, "device_index": 0,
+                        "parameter_index": 1, "steps": [[0, 4, 0.5]]})
+    assert r["ok"] is False and "nicht angelegt" in r["error"]
+
+
 @pytest.mark.parametrize("path", sorted((ROOT / "ReferenceRebuilder").glob("*.py")), ids=lambda p: p.name)
 def test_python37_grammar(path):
     ast.parse(path.read_text(), filename=str(path), feature_version=(3, 7))

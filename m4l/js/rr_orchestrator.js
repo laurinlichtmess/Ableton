@@ -127,6 +127,28 @@ Orchestrator.prototype.analyze = function () {
   });
 };
 
+function message(err) { return err && err.message ? err.message : String(err); }
+
+// Ein fehlgeschlagener Schritt bricht "Anwenden" nicht ab: Fehler landet als Hinweis im Bericht.
+function attempt(report, label, fn) {
+  return Promise.resolve().then(fn).catch(function (err) {
+    report.warnings.push(label + ": " + message(err));
+    return null;
+  });
+}
+
+function isRemoteUnreachable(err) {
+  return /antwortet nicht/.test(message(err));
+}
+
+Orchestrator.prototype._remote = function (report, msg) {
+  if (report.remote_down) return Promise.reject(new Error("Remote Script nicht erreichbar (uebersprungen)"));
+  return this.deps.remote.request(msg).catch(function (err) {
+    if (isRemoteUnreachable(err)) report.remote_down = true;
+    throw err;
+  });
+};
+
 Orchestrator.prototype._insertMissingDevices = function (plan, report) {
   var self = this;
   var d = self.deps;
@@ -135,7 +157,7 @@ Orchestrator.prototype._insertMissingDevices = function (plan, report) {
     return p.then(function () {
       var track = core.trackByIndex(self.state, dev.track);
       self.status("Fuege " + dev.device + " auf '" + track.name + "' ein ...");
-      return d.remote.request({ cmd: "load_device", track_index: dev.track, device: dev.device })
+      return self._remote(report, { cmd: "load_device", track_index: dev.track, device: dev.device })
         .then(function () { return d.sleep(300); })
         .then(function () { return d.lom({ op: "get_state" }); })
         .then(function (state) {
@@ -146,7 +168,7 @@ Orchestrator.prototype._insertMissingDevices = function (plan, report) {
             report.warnings.push(dev.device + " wurde auf '" + track.name + "' nicht gefunden.");
           }
         }, function (err) {
-          report.warnings.push(dev.device + " nicht eingefuegt: " + err.message);
+          report.warnings.push(dev.device + " nicht eingefuegt: " + message(err));
         });
     });
   }, Promise.resolve());
@@ -174,21 +196,23 @@ Orchestrator.prototype._resolveTargets = function (plan, report) {
         report.warnings.push("Kein " + job.env.device + " auf '" + track.name + "': Automation uebersprungen.");
         return null;
       }
-      return d.lom({ op: "get_params", track: job.track, device: dev.index }).then(function (res) {
-        var param = core.findParam(res.params, job.env.parameter);
-        if (!param) {
-          report.warnings.push("Parameter '" + job.env.parameter + "' in " + job.env.device + " nicht gefunden.");
-          return null;
-        }
-        return d.lom({ op: "sample_param", track: job.track, device: dev.index, param: param.index, count: 64 })
-          .then(function (s) {
-            var inv = core.buildInverseMap(s.samples, job.env.unit);
-            if (!inv) {
-              report.warnings.push("Werte von " + job.env.device + "/" + param.name + " nicht lesbar.");
-              return null;
-            }
-            targets[job.key] = { device: dev.index, param: param.index, toRaw: inv };
-          });
+      return attempt(report, job.env.device + "/" + job.env.parameter + " auf '" + track.name + "'", function () {
+        return d.lom({ op: "get_params", track: job.track, device: dev.index }).then(function (res) {
+          var param = core.findParam(res.params, job.env.parameter);
+          if (!param) {
+            report.warnings.push("Parameter '" + job.env.parameter + "' in " + job.env.device + " nicht gefunden.");
+            return null;
+          }
+          return d.lom({ op: "sample_param", track: job.track, device: dev.index, param: param.index, count: 64 })
+            .then(function (s) {
+              var inv = core.buildInverseMap(s.samples, job.env.unit);
+              if (!inv) {
+                report.warnings.push("Werte von " + job.env.device + "/" + param.name + " nicht lesbar.");
+                return null;
+              }
+              targets[job.key] = { device: dev.index, param: param.index, toRaw: inv };
+            });
+        });
       });
     });
   }, Promise.resolve()).then(function () { return targets; });
@@ -206,11 +230,18 @@ Orchestrator.prototype.apply = function () {
       self.state = state;
       plan = core.buildPlan(self.analysis, state, self.options, self.mapping());
       report.warnings = report.warnings.concat(plan.warnings);
-      if (plan.tempo) return d.lom({ op: "set_tempo", tempo: plan.tempo });
+      if (plan.tempo) {
+        return attempt(report, "Tempo " + plan.tempo, function () { return d.lom({ op: "set_tempo", tempo: plan.tempo }); });
+      }
     }).then(function () {
       return plan.locators.reduce(function (p, loc) {
         return p.then(function () {
-          return d.lom({ op: "set_locator", time: loc.time, name: loc.name }).then(function () { report.locators++; });
+          return attempt(report, "Locator '" + loc.name + "' (Beat " + loc.time + ")", function () {
+            return d.lom({ op: "set_locator", time: loc.time, name: loc.name }).then(function (res) {
+              report.locators++;
+              if (res && res.name_ok === false) report.warnings.push("Locator bei Beat " + loc.time + ": Name nicht gesetzt.");
+            });
+          });
         });
       }, Promise.resolve());
     }).then(function () {
@@ -219,16 +250,18 @@ Orchestrator.prototype.apply = function () {
       return self._resolveTargets(plan, report);
     }).then(function (targets) {
       if (!plan.tracks.length) return null;
-      return d.lom({ op: "create_scene" }).then(function (res) {
-        scene = res.scene_index;
-        return plan.tracks.reduce(function (p, t) {
-          return t.clips.reduce(function (p2, c) {
-            return p2.then(function () {
-              self.status("Clip '" + c.name + "' auf '" + t.name + "' ...");
-              return self._buildClip(t, c, scene, targets, report);
-            });
-          }, p);
-        }, Promise.resolve());
+      return attempt(report, "Hilfs-Szene", function () {
+        return d.lom({ op: "create_scene" }).then(function (res) {
+          scene = res.scene_index;
+          return plan.tracks.reduce(function (p, t) {
+            return t.clips.reduce(function (p2, c) {
+              return p2.then(function () {
+                self.status("Clip '" + c.name + "' auf '" + t.name + "' ...");
+                return self._buildClip(t, c, scene, targets, report);
+              });
+            }, p);
+          }, Promise.resolve());
+        });
       });
     }).then(function () {
       return self._finish(scene, report);
@@ -238,8 +271,24 @@ Orchestrator.prototype.apply = function () {
   });
 };
 
+var ENVELOPE_CHUNK = 200;
+
+Orchestrator.prototype._writeEnvelope = function (report, t, scene, target, steps) {
+  var self = this;
+  var chunks = [];
+  for (var i = 0; i < steps.length; i += ENVELOPE_CHUNK) chunks.push(steps.slice(i, i + ENVELOPE_CHUNK));
+  return chunks.reduce(function (p, chunk) {
+    return p.then(function () {
+      return self._remote(report, { cmd: "write_envelope", track_index: t.track, scene_index: scene,
+        device_index: target.device, parameter_index: target.param, steps: chunk });
+    });
+  }, Promise.resolve());
+};
+
 Orchestrator.prototype._buildClip = function (t, c, scene, targets, report) {
-  var d = this.deps;
+  var self = this;
+  var d = self.deps;
+  var label = "Clip '" + c.name + "' auf '" + t.name + "'";
   return d.lom({ op: "create_clip", track: t.track, scene: scene, length: c.length, name: c.name,
     color_index: c.color_index }).then(function () {
     return c.envelopes.reduce(function (p, e) {
@@ -247,15 +296,22 @@ Orchestrator.prototype._buildClip = function (t, c, scene, targets, report) {
       if (!target) return p;
       var steps = e.steps.map(function (s) { return [s[0], s[1], target.toRaw(s[2])]; });
       return p.then(function () {
-        return d.lom({ op: "write_envelope", track: t.track, scene: scene, device: target.device,
-          param: target.param, steps: steps }).then(function () { report.envelopes++; });
+        if (report.remote_down) return null;
+        return attempt(report, label + ", Automation " + e.device + "/" + e.parameter, function () {
+          return self._writeEnvelope(report, t, scene, target, steps).then(function () { report.envelopes++; });
+        });
       });
-    }, Promise.resolve());
+    }, Promise.resolve()).then(function () {
+      return d.lom({ op: "duplicate_to_arrangement", track: t.track, scene: scene, time: c.start });
+    }).then(function () {
+      report.clips++;
+    });
+  }).catch(function (err) {
+    report.warnings.push(label + ": " + message(err));
   }).then(function () {
-    return d.lom({ op: "duplicate_to_arrangement", track: t.track, scene: scene, time: c.start });
-  }).then(function () {
-    report.clips++;
-    return d.lom({ op: "delete_clip", track: t.track, scene: scene });
+    return attempt(report, label + " (Aufraeumen)", function () {
+      return d.lom({ op: "delete_clip", track: t.track, scene: scene });
+    });
   });
 };
 
@@ -266,11 +322,21 @@ Orchestrator.prototype._finish = function (scene, report) {
       report.warnings.push("Hilfs-Szene nicht geloescht: " + e.message);
     });
   return cleanup.then(function () {
+    if (report.remote_down) {
+      report.warnings.push("Remote Script nicht erreichbar: Effekte/Automation teilweise uebersprungen. " +
+        "Control Surface 'ReferenceRebuilder' aktiv?");
+    }
     self.lastReport = report;
     var text = "Fertig: " + report.locators + " Locators, " + report.clips + " Clips, " + report.envelopes +
-      " Automationen" + (report.devices_inserted.length ? ", eingefuegt: " + report.devices_inserted.join(", ") : "");
+      " Automationen" + (report.devices_inserted.length ? ", eingefuegt: " + report.devices_inserted.join(", ") : "") +
+      (report.warnings.length ? " - " + report.warnings.length + " Hinweis(e) im Textfeld" : "");
     self.status(text);
     var summary = core.formatSummary(self.analysis, self.mapping(), self.state);
+    if (report.clips > 0) {
+      summary += "\n\nHinweis: Die MIDI-Clips sind absichtlich leer (kein Noteninhalt) – sie tragen " +
+        "das Songteil-Geruest. Automationen liegen nach dem Duplizieren in den Arrangement-Automationsspuren " +
+        "(Spur oeffnen / Automation einblenden), nicht als Noten im Clip.";
+    }
     if (report.warnings.length) summary += "\n\nHinweise beim Anwenden:\n  " + report.warnings.join("\n  ");
     self.deps.ui.summary(summary);
     return report;

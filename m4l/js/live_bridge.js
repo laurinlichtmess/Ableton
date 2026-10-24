@@ -10,15 +10,17 @@
 //                                              tracks:[{index,name,has_midi_input,is_foldable,devices:[{index,name,class_name}]}],
 //                                              cue_points:[{time,name}]}
 //   set_tempo {tempo}
-//   set_locator {time, name}               -> {created}
+//   set_locator {time, name}               -> {created, name_ok}
 //   create_scene                           -> {scene_index}
 //   delete_scene {scene_index}
 //   create_clip {track, scene, length, name, color_index}
 //   delete_clip {track, scene}
 //   get_params {track, device}             -> {params:[{index,name,min,max,is_quantized}]}
 //   sample_param {track, device, param, count} -> {samples:[[wert, anzeige]]}
-//   write_envelope {track, scene, device, param, steps:[[zeit, dauer, wert]]} -> {steps_written}
 //   duplicate_to_arrangement {track, scene, time}
+//
+// Clip-Envelopes schreibt das Remote Script (write_envelope): Clip.automation_envelope ist in Live 11
+// fuer Max for Live nicht freigegeben.
 
 autowatch = 1;
 inlets = 1;
@@ -48,9 +50,21 @@ function lom() {
 	}
 }
 
-function api(path) {
-	var a = new LiveAPI(path);
-	if (!a || Number(a.id) === 0) {
+// Feste LiveAPI-Objekte je Rolle, per .path umgesetzt. Jedes "new LiveAPI" haengt in Live einen
+// Path-Listener an; nicht mehr referenzierte Objekte erzeugen bei jeder Set-Aenderung
+// "SendMessage"-Fehler und "Invalid syntax" in Log.txt.
+var cursors = {};
+
+function api(path, role) {
+	var key = role || "main";
+	var a = cursors[key];
+	if (!a) {
+		a = new LiveAPI(path);
+		cursors[key] = a;
+	} else {
+		a.path = path;
+	}
+	if (Number(a.id) === 0) {
 		throw new Error("LOM-Objekt nicht gefunden: " + path);
 	}
 	return a;
@@ -75,39 +89,56 @@ function str(a, prop) {
 	return text(a.get(prop));
 }
 
-// LiveAPI.call liefert Objekte als ["id", n] (oder "id n").
-function idFrom(ret) {
-	if (ret && typeof ret === "object" && ret.length !== undefined) {
-		for (var i = 0; i < ret.length - 1; i++) {
-			if (ret[i] === "id") {
-				return Number(ret[i + 1]);
-			}
-		}
-		return Number(ret[ret.length - 1]) || 0;
+// MxDCore parst Zahlen aus Text: "1e-05" wird dort zum String und set/call scheitern mit
+// "Invalid syntax". Deshalb nie Exponentialschreibweise an Live schicken.
+function liveNum(x, what) {
+	var n = Number(x);
+	if (!isFinite(n)) {
+		throw new Error("Ungueltige Zahl fuer " + (what || "Live") + ": " + x);
 	}
-	if (typeof ret === "string") {
-		var m = ret.match(/id\s+(\d+)/);
-		return m ? Number(m[1]) : (Number(ret) || 0);
-	}
-	return Number(ret) || 0;
+	n = Math.round(n * 10000) / 10000;
+	return Math.abs(n) < 0.0001 ? 0 : n;
 }
 
 function trackPath(t) {
-	return "live_set tracks " + Number(t);
+	return "live_set tracks " + liveIndex(t, "track");
 }
 
 function slotPath(t, s) {
-	return trackPath(t) + " clip_slots " + Number(s);
+	return trackPath(t) + " clip_slots " + liveIndex(s, "scene");
 }
 
 function paramPath(t, d, p) {
-	return trackPath(t) + " devices " + Number(d) + " parameters " + Number(p);
+	return trackPath(t) + " devices " + liveIndex(d, "device") + " parameters " + liveIndex(p, "param");
+}
+
+function liveIndex(i, what) {
+	var n = Number(i);
+	if (!(n >= 0) || Math.floor(n) !== n) {
+		throw new Error("Ungueltiger Index fuer " + what + ": " + i);
+	}
+	return n;
+}
+
+// Namen mit Leerzeichen: MxDCore kann "Drop 1" als zwei Atome lesen und "Invalid syntax"
+// loggen. Ein zusammenhaengender String ohne Leerzeichen ist der sichere Fallback.
+function setLiveName(obj, name) {
+	var wanted = String(name == null ? "" : name);
+	try {
+		obj.set("name", wanted);
+		if (str(obj, "name") === wanted) {
+			return { name: wanted, name_ok: true };
+		}
+	} catch (e1) { /* Fallback unten */ }
+	var safe = wanted.replace(/\s+/g, "_");
+	obj.set("name", safe);
+	return { name: safe, name_ok: str(obj, "name") === safe };
 }
 
 function findCue(song, time) {
 	var n = song.getcount("cue_points");
 	for (var i = 0; i < n; i++) {
-		var c = api("live_set cue_points " + i);
+		var c = api("live_set cue_points " + i, "cue");
 		if (Math.abs(num(c, "time") - time) < 0.01) {
 			return i;
 		}
@@ -117,34 +148,34 @@ function findCue(song, time) {
 
 var HANDLERS = {
 	ping: function () {
-		var app = api("live_app");
+		var app = api("live_app", "app");
 		return { live_version: [first(app.call("get_major_version")), first(app.call("get_minor_version")), first(app.call("get_bugfix_version"))].join(".") };
 	},
 
 	get_state: function () {
-		var song = api("live_set");
+		var song = api("live_set", "song");
 		var tracks = [];
 		var nt = song.getcount("tracks");
 		for (var i = 0; i < nt; i++) {
-			var t = api(trackPath(i));
-			var devices = [];
-			var nd = t.getcount("devices");
-			for (var j = 0; j < nd; j++) {
-				var d = api(trackPath(i) + " devices " + j);
-				devices.push({ index: j, name: str(d, "name"), class_name: str(d, "class_name") });
-			}
-			tracks.push({
+			var t = api(trackPath(i), "track");
+			var info = {
 				index: i,
 				name: str(t, "name"),
 				has_midi_input: num(t, "has_midi_input") === 1,
 				is_foldable: num(t, "is_foldable") === 1,
-				devices: devices
-			});
+				devices: []
+			};
+			var nd = t.getcount("devices");
+			for (var j = 0; j < nd; j++) {
+				var d = api(trackPath(i) + " devices " + j, "device");
+				info.devices.push({ index: j, name: str(d, "name"), class_name: str(d, "class_name") });
+			}
+			tracks.push(info);
 		}
 		var cues = [];
 		var nc = song.getcount("cue_points");
 		for (var k = 0; k < nc; k++) {
-			var c = api("live_set cue_points " + k);
+			var c = api("live_set cue_points " + k, "cue");
 			cues.push({ time: num(c, "time"), name: str(c, "name") });
 		}
 		return {
@@ -162,18 +193,21 @@ var HANDLERS = {
 		if (!(bpm >= 20 && bpm <= 999)) {
 			throw new Error("Ungueltiges Tempo: " + req.tempo);
 		}
-		api("live_set").set("tempo", bpm);
+		api("live_set", "song").set("tempo", liveNum(bpm, "tempo"));
 		return {};
 	},
 
 	// Live 11 hat kein "Locator an Position X anlegen": Song-Position setzen, dann set_or_delete_cue.
 	set_locator: function (req) {
-		var song = api("live_set");
-		var time = Number(req.time);
+		var song = api("live_set", "song");
+		var time = liveNum(req.time, "time");
+		if (time < 0) {
+			throw new Error("Locator vor Beat 0: " + req.time);
+		}
 		var idx = findCue(song, time);
 		var created = false;
 		if (idx < 0) {
-			var previous = num(song, "current_song_time");
+			var previous = liveNum(num(song, "current_song_time"), "current_song_time");
 			song.set("current_song_time", time);
 			song.call("set_or_delete_cue");
 			idx = findCue(song, time);
@@ -183,47 +217,55 @@ var HANDLERS = {
 		if (idx < 0) {
 			throw new Error("Locator bei Beat " + time + " konnte nicht gesetzt werden");
 		}
-		api("live_set cue_points " + idx).set("name", String(req.name));
-		return { created: created };
+		var cue = api("live_set cue_points " + idx, "cue");
+		var named = setLiveName(cue, req.name);
+		return { created: created, name_ok: named.name_ok, name: named.name };
 	},
 
 	create_scene: function () {
-		var song = api("live_set");
+		var song = api("live_set", "song");
 		song.call("create_scene", -1);
 		return { scene_index: song.getcount("scenes") - 1 };
 	},
 
 	delete_scene: function (req) {
-		api("live_set").call("delete_scene", Number(req.scene_index));
+		api("live_set", "song").call("delete_scene", liveIndex(req.scene_index, "scene"));
 		return {};
 	},
 
 	create_clip: function (req) {
-		var slot = api(slotPath(req.track, req.scene));
+		var slot = api(slotPath(req.track, req.scene), "slot");
 		if (num(slot, "has_clip") === 1) {
 			throw new Error("Clip-Slot ist belegt");
 		}
-		slot.call("create_clip", Number(req.length));
-		var clip = api(slotPath(req.track, req.scene) + " clip");
-		clip.set("name", String(req.name));
-		if (req.color_index !== null && req.color_index !== undefined) {
-			clip.set("color_index", Number(req.color_index));
+		var length = liveNum(req.length, "length");
+		if (!(length > 0)) {
+			throw new Error("Ungueltige Clip-Laenge: " + req.length);
 		}
-		return {};
+		slot.call("create_clip", length);
+		var clip = api(slotPath(req.track, req.scene) + " clip", "clip");
+		var named = setLiveName(clip, req.name);
+		if (req.color_index !== null && req.color_index !== undefined) {
+			clip.set("color_index", liveIndex(req.color_index, "color_index"));
+		}
+		return { name: named.name, name_ok: named.name_ok };
 	},
 
 	delete_clip: function (req) {
-		api(slotPath(req.track, req.scene)).call("delete_clip");
+		var slot = api(slotPath(req.track, req.scene), "slot");
+		if (num(slot, "has_clip") === 1) {
+			slot.call("delete_clip");
+		}
 		return {};
 	},
 
 	get_params: function (req) {
-		var base = trackPath(req.track) + " devices " + Number(req.device);
-		var dev = api(base);
+		var base = trackPath(req.track) + " devices " + liveIndex(req.device, "device");
+		var dev = api(base, "device");
 		var params = [];
 		var n = dev.getcount("parameters");
 		for (var i = 0; i < n; i++) {
-			var p = api(base + " parameters " + i);
+			var p = api(base + " parameters " + i, "param");
 			params.push({
 				index: i,
 				name: str(p, "name"),
@@ -236,46 +278,21 @@ var HANDLERS = {
 	},
 
 	sample_param: function (req) {
-		var p = api(paramPath(req.track, req.device, req.param));
+		var p = api(paramPath(req.track, req.device, req.param), "param");
 		var min = num(p, "min");
 		var max = num(p, "max");
 		var count = Math.max(2, Number(req.count) || 64);
 		var samples = [];
 		for (var i = 0; i < count; i++) {
-			var v = min + (max - min) * i / (count - 1);
+			var v = liveNum(min + (max - min) * i / (count - 1), "value");
 			samples.push([v, text(p.call("str_for_value", v))]);
 		}
 		return { samples: samples };
 	},
 
-	write_envelope: function (req) {
-		var clip = api(slotPath(req.track, req.scene) + " clip");
-		var param = api(paramPath(req.track, req.device, req.param));
-		var pid = Number(param.id);
-		var envId = idFrom(clip.call("automation_envelope", "id", pid));
-		if (!envId) {
-			envId = idFrom(clip.call("create_automation_envelope", "id", pid));
-		}
-		if (!envId) {
-			envId = idFrom(clip.call("automation_envelope", "id", pid));
-		}
-		if (!envId) {
-			throw new Error("Automation-Envelope konnte nicht angelegt werden");
-		}
-		var env = new LiveAPI("id " + envId);
-		var min = num(param, "min");
-		var max = num(param, "max");
-		var steps = req.steps || [];
-		for (var i = 0; i < steps.length; i++) {
-			var v = Math.max(min, Math.min(max, Number(steps[i][2])));
-			env.call("insert_step", Number(steps[i][0]), Number(steps[i][1]), v);
-		}
-		return { steps_written: steps.length };
-	},
-
 	duplicate_to_arrangement: function (req) {
-		var clip = api(slotPath(req.track, req.scene) + " clip");
-		api(trackPath(req.track)).call("duplicate_clip_to_arrangement", "id", Number(clip.id), Number(req.time));
+		var clip = api(slotPath(req.track, req.scene) + " clip", "clip");
+		api(trackPath(req.track), "track").call("duplicate_clip_to_arrangement", "id", Number(clip.id), liveNum(req.time, "time"));
 		return {};
 	}
 };

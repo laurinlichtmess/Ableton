@@ -2,8 +2,9 @@
 
 Ein Max-for-Live-Device, das eine Referenz-MP3 analysiert und daraus im aktuellen Live-Set das
 **Arrangement-Gerüst** (Tempo, benannte Locators, Clips pro Songteil) und **Automationen**
-(Filter-Cutoff über Auto Filter, Lautstärke-Fades über Utility) nachbaut. Fehlende Effekte fügt ein kleines
-**Companion Remote Script** ein, weil Max for Live in Live 11 keine Geräte einfügen kann.
+(Filter-Cutoff über Auto Filter, Lautstärke-Fades über Utility) nachbaut. Fehlende Effekte und die
+Clip-Automation erledigt ein kleines **Companion Remote Script**, weil Max for Live in Live 11 weder Geräte
+einfügen noch Clip-Envelopes anlegen kann (`Clip.automation_envelope` gibt es nur in der Python-API).
 
 Nachgebaut werden nur Struktur, Automation und Effekt-Vorschläge – keine Noten und keine Sounds.
 
@@ -12,16 +13,17 @@ flowchart LR
   User["MP3 per Drag and Drop"] --> M4L["Max for Live Device"]
   M4L -->|"HTTP 127.0.0.1:47821"| Engine["Python-Analyse-Engine"]
   Engine -->|"JSON"| M4L
-  M4L -->|"Live API (LOM)"| LiveSet["Locators, Clips, Clip-Envelopes"]
+  M4L -->|"Live API (LOM)"| LiveSet["Tempo, Locators, Clips"]
   M4L -->|"UDP 127.0.0.1:47822"| Remote["Remote Script"]
   Remote -->|"browser.load_item"| Devices["Auto Filter / Utility"]
+  Remote -->|"Python-API"| Envelopes["Clip-Envelopes"]
 ```
 
 | Teil | Ordner | Aufgabe |
 |---|---|---|
 | Analyse-Engine | `engine/` | Tempo/Beatgrid, Songteile, Stems (Demucs), Automationskurven, FastAPI-Dienst |
 | M4L-Device | `m4l/` | Oberfläche, Engine-Anbindung, Umsetzung im Live-Set |
-| Remote Script | `remote_script/ReferenceRebuilder/` | Lädt Geräte über die Browser-API auf eine Spur |
+| Remote Script | `remote_script/ReferenceRebuilder/` | Lädt Geräte über die Browser-API, schreibt Clip-Envelopes |
 | Installer | `install.sh`, `start-engine.sh` | Einrichten, Kopieren, Engine starten |
 
 ## Voraussetzungen
@@ -66,18 +68,19 @@ Liegt deine User Library woanders (Live: *Einstellungen › Library*), so:
 2. MP3 auf das Drop-Feld ziehen und **Analysieren** klicken. Die Engine wird bei Bedarf automatisch gestartet;
    mit Demucs dauert die Analyse je nach Mac einige Minuten (Fortschritt in der Statuszeile). Ergebnisse
    werden pro Datei zwischengespeichert (`~/.cache/reference-rebuilder`).
-3. Rechts erscheinen Tempo, Songteile (z. B. Intro, Build, Drop, Breakdown, Outro), die Zuordnung der Stems zu
-   deinen Spuren und Effekt-Vorschläge.
-4. **Stem → Spur**: Die Zuordnung erfolgt automatisch nach Spurnamen (z. B. „Kick/Drums“ → drums, „Sub/Bass“ →
-   bass, „Lead/Pad/Synth“ → other, „Vox/Vocal“ → vocals) und lässt sich pro Stem im Menü ändern
-   („Keine“ = Stem ignorieren). **Spuren** aktualisiert die Liste.
+3. Rechts erscheinen Tempo, Songteile (z. B. Intro, Build, Drop, Breakdown, Outro), die Zuordnung der
+   Elemente zu deinen Spuren und Effekt-Vorschläge.
+4. **Element → Spur**: Die Zuordnung erfolgt automatisch nach Spurnamen
+   (Kick, Bass, Clap/Snare, Hats, Ride, Perc, Atmo/Pads, Synth/Lead, Vocals) und lässt sich pro Element
+   im Menü ändern („Keine“ = ignorieren). **Spuren** aktualisiert die Liste.
 5. Optionen:
    - **Arrangement anlegen**: Locators an jedem Songteil, Clips pro Songteil auf den zugeordneten Spuren
      (nur dort, wo der Stem in der Referenz spielt)
    - **Automation/Effekte**: fehlende Auto Filter/Utility einfügen und Kurven als Clip-Envelopes schreiben
    - **Tempo übernehmen**: Song-Tempo auf das erkannte Tempo setzen
 6. **Anwenden** klicken. Die Statuszeile meldet am Ende, was angelegt wurde; Hinweise (z. B. Audiospuren)
-   stehen im Textfeld.
+   stehen im Textfeld. Schlägt ein einzelner Schritt fehl (ein Locator, ein Clip, eine Automation), läuft
+   Anwenden weiter und der Fehler steht unter „Hinweise beim Anwenden“.
 
 **Tipp:** Vorher das Set speichern bzw. eine Kopie anlegen. Jede Änderung ist ein eigener Undo-Schritt.
 
@@ -87,9 +90,10 @@ Liegt deine User Library woanders (Live: *Einstellungen › Library*), so:
   erkannter Taktanfang der Referenz; die Referenz-Audiodatei ggf. um `first_downbeat_sec` nach links schieben).
   Ein bereits vorhandener Locator an derselben Position wird nur umbenannt.
 - Für jede zugeordnete **MIDI-Spur** wird eine temporäre Szene angelegt, darin pro Songteil ein leerer
-  MIDI-Clip in Songteil-Länge (benannt und nach Abschnittsgruppe eingefärbt) mit Clip-Envelopes für
-  *Auto Filter › Frequency* bzw. *Utility › Gain*. Der Clip wird mit `duplicate_clip_to_arrangement` an die
-  richtige Stelle im Arrangement kopiert; die temporäre Szene wird danach wieder gelöscht.
+  MIDI-Clip in Songteil-Länge (benannt und nach Abschnittsgruppe eingefärbt). Die Clip-Envelopes für
+  *Auto Filter › Frequency* bzw. *Utility › Gain* schreibt das Remote Script (`write_envelope`). Der Clip wird
+  mit `duplicate_clip_to_arrangement` an die richtige Stelle im Arrangement kopiert; die temporäre Szene wird
+  danach wieder gelöscht. Ohne aktives Remote Script entstehen Locators und Clips trotzdem, nur ohne Automation.
 - **Effekte**: Ist auf der Spur noch kein Auto Filter (`AutoFilter`) bzw. Utility (`StereoGain`), lädt das
   Remote Script ihn ans Ende der Geräte-Kette.
 - Hz/dB werden über `str_for_value` des jeweiligen Parameters in Live-Rohwerte umgerechnet, damit die Kurven
@@ -118,13 +122,15 @@ Das Ergebnis folgt `engine/src/reference_engine/schema/analysis.schema.json`: `t
 `stems[].automation[]` (Breakpoints in Beats), `stems[].active_sections`, `suggested_devices`, `hints`
 (z. B. Sidechain-Pumpen) und `warnings`.
 
-Verfahren in Kürze: Beat-Tracking mit librosa und Fit eines konstanten Rasters (Takt 1 über die tiefen
-Onsets/Kick), Novelty-Segmentierung auf Taktebene (Klangfarbe, Energie, Dichte) mit Bevorzugung von
-4/8-Takt-Phrasen, Benennung über Energie- und Trend-Heuristik, Stems mit Demucs (`htdemucs`), Filterkurven
-aus dem spektralen Rolloff (nur bei erkannten Sweeps), Fades aus RMS-Rampen, Sidechain-Hinweis aus
-beat-synchroner Pegelmodulation.
+Verfahren in Kürze: Fourier-Tempogramm mit metrischer Bewertung und Prior für elektronische Musik
+(~128 BPM; optional `bpm_hint` / `bpm_min`/`bpm_max` per API/CLI), Taktanfang über Takt-zu-Takt-Klangwechsel;
+Segmentierung per dynamischer Programmierung auf dem 4-Takt-Raster (bevorzugt 8/16/32), Labels über
+Kick/Bass/Energie (Breakdown = ohne Kick, Build = ansteigend); Demucs-Stems (`htdemucs`, Gerät: MPS → CUDA → CPU)
+plus spektrale Element-Masken (Kick/Bass/Clap/Hats/Ride/Perc/Atmo/Synth/Vocals) mit Presence pro Takt und
+Filter-/Gain-Kurven; Sidechain-Hinweis aus beat-synchroner Pegelmodulation. Fortschritt während Demucs
+wird gemeldet; Stems landen im Cache.
 
-Umgebungsvariablen: `REFERENCE_ENGINE_DEMUCS_DEVICE` (`cpu` Standard, `mps` für Apple-GPU – experimentell),
+Umgebungsvariablen: `REFERENCE_ENGINE_DEMUCS_DEVICE` (sonst automatisch `mps`/`cuda`/`cpu`),
 `REFERENCE_ENGINE_DEMUCS_MODEL` (Standard `htdemucs`), `REFERENCE_ENGINE_CACHE`.
 
 ## Ports
@@ -145,8 +151,9 @@ node --test m4l/tests/*.test.js              # Device-Logik (Node 18+)
 python3 m4l/build_device.py                  # .amxd/.maxpat nach Änderungen am Patch neu erzeugen
 ```
 
-- Die Engine-Tests erzeugen synthetische Songs mit bekannten Abschnitten, Filter-Sweeps, Fades und Pumpen
-  (`engine/tests/synth.py`) und prüfen Tempo, Grenzen, Namen, Vorschläge und einen JSON-Snapshot
+- Die Engine-Tests erzeugen synthetische Songs (`engine/tests/synth.py`) und Hardgroove-Signale
+  (`engine/tests/groove.py`, u. a. 147 BPM mit dichter Percussion gegen 2/3-Tempo-Fehler) und prüfen Tempo,
+  Elemente (Kick vs. Bass, Ride, Clap, Pad), Songteile, Vorschläge und einen JSON-Snapshot
   (`UPDATE_SNAPSHOTS=1` aktualisiert ihn).
 - Die Device-Tests führen `live_bridge.js` gegen ein nachgebautes Live-11-Objektmodell aus
   (`m4l/tests/fake_lom.js`) – inklusive kompletter Abläufe „Analysieren → Anwenden“.
@@ -163,8 +170,8 @@ Aufbau des Devices: `rr_node.js` (Node for Max) enthält Ablauf und Netzwerk, `r
 - **Arrangement wird überschrieben:** `duplicate_clip_to_arrangement` ersetzt vorhandenes Material an
   derselben Stelle der Spur. Am besten in ein leeres Arrangement bzw. auf leere Spuren bauen.
 - **Taktart:** Es wird 4/4 angenommen; Tempowechsel innerhalb der Referenz werden nicht abgebildet.
-- **Ohne Demucs** (`--no-stems`) ist die Trennung grob (Perkussion/Bass/Rest, keine Vocals); Kick-Anteile
-  landen im Bass, Sweeps können auf mehreren Stems erkannt werden.
+- **Ohne Demucs** (`--no-stems`) entfallen Vocals; Elemente kommen aus dem Mix (Kick/Bass-Trennung und
+  Atmo/Synth sind ungenauer). Mit Demucs bleiben Drum-Unterelemente spektral (kein separates Drumsep-Modell).
 - **Heuristiken:** Songteil-Namen und Sweep-/Fade-Erkennung sind Heuristiken und müssen bei echten Songs ggf.
   von Hand korrigiert werden.
 - **Effekte:** In dieser Version nur Auto Filter (Frequency) und Utility (Gain). Sidechain wird nur als

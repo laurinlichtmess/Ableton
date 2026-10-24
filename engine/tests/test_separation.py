@@ -38,9 +38,11 @@ def test_demucs_path_uses_model_and_cache(monkeypatch, tmp_path):
     fake_model = types.SimpleNamespace(samplerate=sr_model, sources=["drums", "bass", "other", "vocals"])
     calls = {"n": 0}
 
-    def fake_apply(model, wav):
+    def fake_apply(model, wav, device="cpu", progress=None):
         calls["n"] += 1
         assert wav.shape[0] == 2
+        if progress:
+            progress(0.9, "fake demucs")
         return np.stack([wav * (i + 1) * 0.1 for i in range(4)])
 
     monkeypatch.setenv("REFERENCE_ENGINE_CACHE", str(tmp_path / "cache"))
@@ -48,14 +50,23 @@ def test_demucs_path_uses_model_and_cache(monkeypatch, tmp_path):
     monkeypatch.setattr(separation, "_apply_demucs", fake_apply)
     monkeypatch.setattr(separation, "demucs_available", lambda: True)
 
-    res, warnings = separation.separate(wav_path, np.zeros(10), method="auto", sha1="abc")
+    msgs = []
+    res, warnings = separation.separate(wav_path, np.zeros(10), method="auto", sha1="abc",
+                                        progress=lambda p, m: msgs.append((p, m)))
     assert res.method == "demucs" and not warnings
     assert set(res.stems) == {"drums", "bass", "other", "vocals"}
     assert abs(len(res.stems["bass"]) - ANALYSIS_SR * 2) < 10
+    assert res.device
+    assert any(p >= 0.9 for p, _ in msgs), "Fortschritt muss ueber den Startwert hinausgehen"
 
     res2, _ = separation.separate(wav_path, np.zeros(10), method="auto", sha1="abc")
     assert calls["n"] == 1, "zweiter Lauf muss aus dem Cache kommen"
     assert np.allclose(res2.stems["vocals"], res.stems["vocals"], atol=1e-3)
+
+
+def test_resolve_device_respects_env(monkeypatch):
+    monkeypatch.setenv("REFERENCE_ENGINE_DEMUCS_DEVICE", "cpu")
+    assert separation.resolve_device() == "cpu"
 
 
 def test_demucs_failure_falls_back(monkeypatch, tmp_path):

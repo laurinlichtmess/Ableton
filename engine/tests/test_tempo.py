@@ -1,8 +1,9 @@
 import numpy as np
 import pytest
+from groove import HARDGROOVE_GAINS, GrooveSpec, mix, render_elements
 from synth import SR, _hat, _kick
 
-from reference_engine.tempo import estimate_grid
+from reference_engine.tempo import TempoOptions, estimate_grid
 
 
 def click_track(bpm: float, offset: float, bars: int = 24, offbeat_hats: bool = True) -> np.ndarray:
@@ -38,3 +39,28 @@ def test_grid_conversions():
     assert grid.num_bars == 24
     d = grid.to_dict()
     assert d["time_signature"] == [4, 4]
+    assert "candidates" in d and d["source"] == "auto"
+
+
+@pytest.mark.parametrize("bpm", [126.0, 132.0, 140.0, 147.0, 150.0])
+@pytest.mark.parametrize("hardgroove", [False, True])
+def test_hardgroove_tempo_no_twothirds(bpm, hardgroove):
+    """Dichte Percussion (3er-Sechzehntel) darf nicht auf 2/3-Tempo (z. B. 147 -> 98) einrasten."""
+    spec = GrooveSpec(bpm=bpm)
+    y = mix(render_elements(spec), HARDGROOVE_GAINS if hardgroove else None)
+    grid = estimate_grid(y)
+    assert grid.bpm == pytest.approx(bpm, abs=0.5)
+    assert abs(grid.first_downbeat_sec - spec.preroll_sec) < 0.05
+    # Der 2/3-Kandidat darf nicht gewinnen.
+    related = {c["relation"]: c["score"] for c in grid.candidates}
+    assert related.get("2/3", 0) < 0.5
+
+
+def test_bpm_hint_and_range():
+    y = mix(render_elements(GrooveSpec(bpm=147.0)), HARDGROOVE_GAINS)
+    hinted = estimate_grid(y, options=TempoOptions(bpm_hint=147.0))
+    assert hinted.bpm == pytest.approx(147.0, abs=0.25)
+    assert hinted.source == "hint"
+    ranged = estimate_grid(y, options=TempoOptions(bpm_min=120, bpm_max=160))
+    assert ranged.bpm == pytest.approx(147.0, abs=0.5)
+    assert ranged.source == "range"

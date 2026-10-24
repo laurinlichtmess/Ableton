@@ -64,7 +64,10 @@ House/Techno mit Build und Drop) bereitlegen.
       trotzdem eingefügt, keine Clips.
 - [ ] E4 Nur „Automation/Effekte“ an: keine Locators, kein Tempo; Clips nur in Abschnitten mit Automation.
 - [ ] E5 Control Surface abwählen, dann **Anwenden**: Hinweis „nicht eingefügt: Remote Script antwortet
-      nicht …“, vorhandene Auto Filter werden trotzdem automatisiert, Live bleibt stabil.
+      nicht …“ und „Remote Script nicht erreichbar …“; Locators und Clips entstehen trotzdem (ohne Automation),
+      Live bleibt stabil.
+- [ ] E8 Nach **Anwenden** in `Log.txt` (`~/Library/Preferences/Ableton/Live 11.x/`): keine Zeilen
+      „jsliveapi: Invalid syntax“, „has no attribute 'automation_envelope'“ oder „SendMessage“-Fehler.
 - [ ] E6 Engine beenden (`pkill -f "reference-engine serve"`), `start-engine.sh` vorübergehend umbenennen,
       **Analysieren**: verständliche Fehlermeldung nach max. ca. 40 s.
 - [ ] E7 Set speichern, schließen, wieder öffnen: Optionen behalten ihren Zustand; Device startet wieder.

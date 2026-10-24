@@ -1,7 +1,9 @@
 "use strict";
 // Minimales Live-11-Objektmodell fuer Tests von live_bridge.js (nur die genutzten Teile der LOM).
 // Verhalten wie in Live: create_clip nur auf MIDI-Spuren, Objekt-Rueckgaben als ["id", n],
-// set_or_delete_cue wirkt auf current_song_time.
+// set_or_delete_cue wirkt auf current_song_time. Wie Max for Live in Live 11 gibt es keine
+// Clip.automation_envelope/create_automation_envelope (nur die Python-API des Remote Scripts hat sie,
+// siehe remoteScript()). Zahlen in Exponentialschreibweise lehnt MxDCore mit "Invalid syntax" ab.
 
 var fs = require("fs");
 var path = require("path");
@@ -11,6 +13,7 @@ function FakeLive() {
   this.registry = {};
   this.nextId = 1;
   this.calls = [];
+  this.apiInstances = 0;
   this.app = this.reg({ _type: "Application", major: 11, minor: 3, bugfix: 25 });
   this.song = this.reg({ _type: "Song", tempo: 120, signature_numerator: 4, signature_denominator: 4,
     current_song_time: 0, tracks: [], cue_points: [], scenes: [] });
@@ -120,15 +123,6 @@ FakeLive.prototype.invoke = function (obj, fn, args) {
       return undefined;
     }
     case "ClipSlot.delete_clip": obj.clip = null; return undefined;
-    case "Clip.automation_envelope": {
-      var env = obj.envelopes[args[0]._id];
-      return ref(env || null);
-    }
-    case "Clip.create_automation_envelope": {
-      obj.envelopes[args[0]._id] = self.reg({ _type: "AutomationEnvelope", param: args[0], steps: [] });
-      return ref(obj.envelopes[args[0]._id]);
-    }
-    case "AutomationEnvelope.insert_step": obj.steps.push([args[0], args[1], args[2]]); return undefined;
     case "DeviceParameter.str_for_value": return obj.show(Number(args[0]));
     case "Track.duplicate_clip_to_arrangement": {
       var clip = args[0];
@@ -140,18 +134,51 @@ FakeLive.prototype.invoke = function (obj, fn, args) {
         color_index: clip.color_index, envelopes: envs });
       return undefined;
     }
-    default: throw new Error("FakeLive: unbekannte Funktion " + obj._type + "." + fn);
+    default: throw new Error("'" + obj._type + "' object has no attribute '" + fn + "'");
   }
+};
+
+function checkSyntax(values) {
+  values.forEach(function (v) {
+    if (typeof v === "number" && /e/i.test(String(v))) throw new Error("Invalid syntax (" + v + ")");
+  });
+}
+
+// Python-Seite des Remote Scripts (commands.py) auf diesem Modell: load_device und write_envelope.
+FakeLive.prototype.remoteScript = function (msg) {
+  var track = this.song.tracks[msg.track_index];
+  if (!track) throw new Error("Spur " + msg.track_index + " existiert nicht");
+  if (msg.cmd === "load_device") {
+    track.devices.push(this.makeDevice(msg.device));
+    return { ok: true, device: msg.device };
+  }
+  if (msg.cmd === "write_envelope") {
+    var slot = track.clip_slots[msg.scene_index];
+    if (!slot || !slot.clip) throw new Error("Kein Clip in Slot " + msg.scene_index);
+    var param = track.devices[msg.device_index].parameters[msg.parameter_index];
+    var env = slot.clip.envelopes[param._id];
+    if (!env) env = slot.clip.envelopes[param._id] = this.reg({ _type: "AutomationEnvelope", param: param, steps: [] });
+    msg.steps.forEach(function (st) { env.steps.push([st[0], st[1], Math.min(param.max, Math.max(param.min, st[2]))]); });
+    return { ok: true, steps_written: msg.steps.length };
+  }
+  throw new Error("Unbekannter Befehl: " + msg.cmd);
 };
 
 FakeLive.prototype.LiveAPIClass = function () {
   var live = this;
   function LiveAPI(p) {
-    var obj = live.resolve(p);
-    this._obj = obj;
-    this.id = obj ? String(obj._id) : "0";
-    this.path = p;
+    live.apiInstances++;
+    this._path = "";
+    this._obj = null;
+    if (p !== undefined) this.path = p;
   }
+  Object.defineProperty(LiveAPI.prototype, "path", {
+    get: function () { return this._path; },
+    set: function (p) { this._path = p; this._obj = live.resolve(p); },
+  });
+  Object.defineProperty(LiveAPI.prototype, "id", {
+    get: function () { return this._obj ? String(this._obj._id) : "0"; },
+  });
   LiveAPI.prototype.get = function (prop) {
     var o = this._obj;
     if (prop === "has_clip") return [o.clip ? 1 : 0];
@@ -162,6 +189,7 @@ FakeLive.prototype.LiveAPIClass = function () {
     return [v];
   };
   LiveAPI.prototype.set = function (prop, value) {
+    checkSyntax([value]);
     if (this._obj[prop] === undefined) throw new Error("FakeLive: unbekannte Eigenschaft " + prop);
     live.calls.push([this._obj._type, "set", prop, value]);
     this._obj[prop] = value;
@@ -171,6 +199,7 @@ FakeLive.prototype.LiveAPIClass = function () {
   };
   LiveAPI.prototype.call = function () {
     var args = Array.prototype.slice.call(arguments);
+    checkSyntax(args.slice(1));
     return live.invoke(this._obj, args[0], live.unpackArgs(args.slice(1)));
   };
   return LiveAPI;

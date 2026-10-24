@@ -2,15 +2,27 @@
 // Reine Logik des Reference Rebuilders (ohne Max/Live-Abhaengigkeiten, mit node:test getestet).
 // Kompatibel mit dem Node von Node for Max in Live 11 (kein ?. / ??).
 
-var STEMS = ["drums", "bass", "other", "vocals"];
+// Feine Elemente (= Analyse-Stems). Reihenfolge = Menue-Reihenfolge im Device.
+var STEMS = ["kick", "bass", "clap", "hats", "ride", "perc", "atmo", "synth", "vocals"];
+var STEM_LABELS = {
+  kick: "Kick", bass: "Bass", clap: "Clap", hats: "Hats", ride: "Ride",
+  perc: "Perc", atmo: "Atmo", synth: "Synth", vocals: "Vocals",
+};
 var MENU_AUTO = "Auto";
 var MENU_NONE = "Keine";
 
+// Spezifischere Stichworte zuerst (hoeherer Score). "drum" ist Fallback fuer Kick.
+// Kein generisches "loop" – lange Audio-Sample-Namen stehlen sonst MIDI-Spuren.
 var STEM_KEYWORDS = {
-  drums: ["drum", "kick", "snare", "hat", "perc", "beat", "clap", "schlagzeug", "top", "loop"],
-  bass: ["bass", "sub", "808", "reese"],
+  kick: ["kick", "bd", "bassdrum", "bass drum", "drum"],
+  bass: ["bass", "sub", "808", "reese", "303"],
+  clap: ["clap", "snare", "sd", "rim"],
+  hats: ["hat", "hh", "hihat", "hi-hat", "closed"],
+  ride: ["ride", "cymbal", "crash"],
+  perc: ["perc", "conga", "bongo", "shaker", "tamb", "tom"],
+  atmo: ["atmo", "pad", "chord", "string", "atmosphere", "fx", "noise"],
+  synth: ["synth", "lead", "arp", "pluck", "key", "piano", "melod", "stab"],
   vocals: ["vocal", "vox", "voc", "gesang", "stimme", "sing", "acapella", "chant"],
-  other: ["synth", "lead", "pad", "chord", "key", "piano", "guitar", "gitarre", "arp", "pluck", "string", "other", "melod", "fx"],
 };
 
 var DEVICE_CLASS = { "Auto Filter": "AutoFilter", Utility: "StereoGain" };
@@ -31,30 +43,46 @@ function usableTracks(tracks) {
   return (tracks || []).filter(function (t) { return !t.is_foldable; });
 }
 
+// Stichwort-Treffer; kurze Spurnamen ("kick", "drums") schlagen lange Audio-Sample-Namen.
 function scoreTrack(stem, name) {
   var n = String(name || "").toLowerCase();
   var words = STEM_KEYWORDS[stem] || [];
+  var best = 0;
   for (var i = 0; i < words.length; i++) {
-    if (n.indexOf(words[i]) !== -1) return words.length - i;
+    var w = words[i];
+    if (n.indexOf(w) === -1) continue;
+    var s = (words.length - i) * 10;
+    if (n === w) s += 8;
+    else if (n.length <= 16) s += 4;
+    if (n.length > 28) s -= 20; // z. B. "24-seedj_drum_loop_corp-hats_132"
+    if (s > best) best = s;
   }
-  return 0;
+  return best > 0 ? best : 0;
 }
 
-// Automatische Zuordnung Stem -> Spurindex nach Spurnamen (jede Spur hoechstens einmal).
+// Automatische Zuordnung Element -> Spurindex nach Spurnamen (jede Spur hoechstens einmal).
+// MIDI-Spuren gewinnen gegen Audiospuren: Arrangement-Clips gehen in Live 11 nur auf MIDI.
 function autoMapStems(stemNames, tracks) {
   var mapping = {};
   var used = {};
   var order = STEMS.filter(function (s) { return stemNames.indexOf(s) !== -1; })
     .concat(stemNames.filter(function (s) { return STEMS.indexOf(s) === -1; }));
-  // "other" zuletzt: seine Stichworte sind am unspezifischsten.
-  order.sort(function (a, b) { return (a === "other") - (b === "other"); });
+  // Unspezifische Fallback-Stichworte ("drum" bei Kick) zuletzt behandeln, indem spezifischere
+  // Elemente zuerst gemappt werden.
+  order.sort(function (a, b) {
+    var pa = ["kick", "bass", "clap", "hats", "ride", "perc", "vocals", "atmo", "synth"].indexOf(a);
+    var pb = ["kick", "bass", "clap", "hats", "ride", "perc", "vocals", "atmo", "synth"].indexOf(b);
+    return (pa < 0 ? 99 : pa) - (pb < 0 ? 99 : pb);
+  });
   order.forEach(function (stem) {
     var best = null;
-    var bestScore = 0;
+    var bestRank = -1;
     usableTracks(tracks).forEach(function (t) {
       if (used[t.index]) return;
       var s = scoreTrack(stem, t.name);
-      if (s > bestScore) { best = t.index; bestScore = s; }
+      if (s <= 0) return;
+      var rank = s + (t.has_midi_input ? 1000 : 0);
+      if (rank > bestRank) { best = t.index; bestRank = rank; }
     });
     mapping[stem] = best;
     if (best !== null) used[best] = true;
@@ -219,8 +247,8 @@ function buildPlan(analysis, state, options, mapping) {
       }
     });
     if (!track.has_midi_input && (opts.build_arrangement || automation.length)) {
-      plan.warnings.push("'" + track.name + "' ist eine Audiospur: Live 11 kann dort keine leeren Clips anlegen. " +
-        "Clip-Geruest/Automation nur auf MIDI-Spuren (Effekte werden trotzdem eingefuegt).");
+      plan.warnings.push("'" + track.name + "' (" + stem.name + ") ist eine Audiospur: Live 11 legt Clip-Geruest " +
+        "nur auf MIDI-Spuren an. Bitte im Device eine MIDI-Spur waehlen (Effekte werden trotzdem eingefuegt).");
       return;
     }
     var clips = [];
@@ -256,10 +284,12 @@ function formatSummary(analysis, mapping, state) {
   var lines = [];
   var t = analysis.tempo || {};
   lines.push("Tempo " + t.bpm + " BPM (Konfidenz " + Math.round((t.confidence || 0) * 100) + "%), " +
-    t.num_bars + " Takte, Stems: " + analysis.separation);
+    t.num_bars + " Takte, Trennung: " + analysis.separation +
+    (analysis.device ? " @ " + analysis.device : ""));
   lines.push("Songteile:");
   (analysis.sections || []).forEach(function (s) {
-    lines.push("  T" + (s.start_bar + 1) + "-" + s.end_bar + "  " + s.label + " [" + s.group + "]");
+    var el = (s.elements && s.elements.length) ? " (" + s.elements.join(", ") + ")" : "";
+    lines.push("  T" + (s.start_bar + 1) + "-" + s.end_bar + "  " + s.label + " [" + s.group + "]" + el);
   });
   if (mapping) {
     lines.push("Zuordnung:");
@@ -267,12 +297,15 @@ function formatSummary(analysis, mapping, state) {
     (analysis.stems || []).forEach(function (s) { if (s.present === false) absent[s.name] = true; });
     Object.keys(mapping).forEach(function (stem) {
       var tr = mapping[stem] === null ? null : trackByIndex(state, mapping[stem]);
-      lines.push("  " + stem + " -> " + (tr ? menuItemForTrack(tr) : "-") + (absent[stem] ? " (in Referenz stumm)" : ""));
+      var label = STEM_LABELS[stem] || stem;
+      lines.push("  " + label + " -> " + (tr ? menuItemForTrack(tr) : "-") + (absent[stem] ? " (stumm)" : ""));
     });
   }
   if ((analysis.suggested_devices || []).length) {
     lines.push("Vorschlaege:");
-    analysis.suggested_devices.forEach(function (d) { lines.push("  " + d.stem + ": " + d.device + " - " + d.reason); });
+    analysis.suggested_devices.forEach(function (d) {
+      lines.push("  " + (STEM_LABELS[d.stem] || d.stem) + ": " + d.device + " - " + d.reason);
+    });
   }
   (analysis.hints || []).forEach(function (h) { lines.push("Hinweis: " + h.message); });
   (analysis.warnings || []).forEach(function (w) { lines.push("Warnung: " + w); });
@@ -281,10 +314,12 @@ function formatSummary(analysis, mapping, state) {
 
 module.exports = {
   STEMS: STEMS,
+  STEM_LABELS: STEM_LABELS,
   MENU_AUTO: MENU_AUTO,
   MENU_NONE: MENU_NONE,
   DEVICE_CLASS: DEVICE_CLASS,
   toPosixPath: toPosixPath,
+  scoreTrack: scoreTrack,
   autoMapStems: autoMapStems,
   resolveMapping: resolveMapping,
   menuItems: menuItems,
