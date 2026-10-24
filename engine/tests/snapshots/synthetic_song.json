@@ -1,0 +1,110 @@
+{
+  "bpm": 128,
+  "sections": [
+    [
+      "Intro",
+      0,
+      8
+    ],
+    [
+      "Build",
+      8,
+      16
+    ],
+    [
+      "Drop 1",
+      16,
+      24
+    ],
+    [
+      "Breakdown",
+      24,
+      32
+    ],
+    [
+      "Drop 2",
+      32,
+      40
+    ],
+    [
+      "Drop 3",
+      40,
+      44
+    ],
+    [
+      "Outro",
+      44,
+      49
+    ]
+  ],
+  "separation": "bands",
+  "stems": {
+    "drums": {
+      "active_sections": [
+        true,
+        true,
+        true,
+        false,
+        true,
+        true,
+        true
+      ],
+      "automation": [
+        "filter_cutoff",
+        "gain"
+      ]
+    },
+    "bass": {
+      "active_sections": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "automation": [
+        "gain"
+      ]
+    },
+    "other": {
+      "active_sections": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false,
+        false
+      ],
+      "automation": [
+        "filter_cutoff"
+      ]
+    }
+  },
+  "suggested_devices": [
+    [
+      "bass",
+      "Utility"
+    ],
+    [
+      "drums",
+      "Auto Filter"
+    ],
+    [
+      "drums",
+      "Utility"
+    ],
+    [
+      "other",
+      "Auto Filter"
+    ]
+  ],
+  "hints": [
+    [
+      "sidechain_pump",
+      "other"
+    ]
+  ]
+}

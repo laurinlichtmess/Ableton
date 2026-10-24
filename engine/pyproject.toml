@@ -1,0 +1,45 @@
+[project]
+name = "reference-engine"
+version = "0.1.0"
+description = "Lokale Analyse-Engine fuer den Ableton Reference Rebuilder (Tempo, Songteile, Stems, Automationskurven)"
+readme = "README.md"
+requires-python = ">=3.10,<3.13"
+dependencies = [
+    "numpy>=1.26,<3",
+    "scipy>=1.11",
+    "librosa>=0.10.2",
+    "soundfile>=0.12.1",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+# Demucs (echte Stem-Trennung). Gross (PyTorch), daher optional.
+# torch/torchaudio < 2.9: demucs 4.0.1 ist mit den neuen torchaudio-IO-Aenderungen nicht kompatibel.
+stems = [
+    "demucs>=4.0.1",
+    "torch>=2.1,<2.9",
+    "torchaudio>=2.1,<2.9",
+]
+
+[project.scripts]
+reference-engine = "reference_engine.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "jsonschema>=4.21",
+]
+
+[build-system]
+requires = ["uv_build>=0.8.0,<0.14.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "../remote_script/tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning:audioread.*",
+    "ignore:Using `httpx` with `starlette.testclient`",
+]
