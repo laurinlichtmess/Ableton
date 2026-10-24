@@ -94,6 +94,12 @@ def test_snapshot(analysis):
     assert summary == json.loads(SNAPSHOT.read_text())
 
 
+def test_m4l_fixture_matches_schema():
+    """Vertrag Engine <-> M4L: die Fixture der JS-Tests muss dem aktuellen Schema entsprechen."""
+    fixture = Path(__file__).resolve().parents[2] / "m4l" / "tests" / "fixtures" / "analysis.json"
+    jsonschema.validate(json.loads(fixture.read_text()), schema())
+
+
 def test_wav_and_cli(tmp_path):
     from synth import SongSpec, write_song
 

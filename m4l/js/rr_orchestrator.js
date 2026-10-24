@@ -1,0 +1,280 @@
+"use strict";
+// Ablaufsteuerung: Analyse anstossen, Plan bauen, Live-Operationen der Reihe nach ausfuehren.
+// Alle Seiteneffekte kommen ueber `deps` herein, damit der Ablauf ohne Live/Max testbar ist.
+
+var core = require("./rr_core");
+
+function Orchestrator(deps) {
+  this.deps = deps;
+  this.file = null;
+  this.analysis = null;
+  this.state = null;
+  this.overrides = {};
+  this.options = { build_arrangement: true, apply_automation: true, set_tempo: true };
+  this.busy = false;
+}
+
+Orchestrator.prototype.status = function (text) { this.deps.ui.status(text); };
+
+Orchestrator.prototype._exclusive = function (name, fn) {
+  var self = this;
+  if (self.busy) {
+    self.status("Bitte warten: " + self.busy + " laeuft noch");
+    return Promise.resolve(false);
+  }
+  self.busy = name;
+  return Promise.resolve().then(fn).then(function (r) {
+    self.busy = false;
+    return r;
+  }, function (err) {
+    self.busy = false;
+    self.status("Fehler: " + (err && err.message ? err.message : err));
+    return false;
+  });
+};
+
+Orchestrator.prototype.stemNames = function () {
+  if (this.analysis) return this.analysis.stems.map(function (s) { return s.name; });
+  return core.STEMS.slice();
+};
+
+Orchestrator.prototype.mapping = function () {
+  return core.resolveMapping(this.stemNames(), this.state ? this.state.tracks : [], this.overrides);
+};
+
+Orchestrator.prototype.refreshTracks = function () {
+  var self = this;
+  return self.deps.lom({ op: "get_state" }).then(function (state) {
+    self.state = state;
+    var items = core.menuItems(state.tracks);
+    core.STEMS.forEach(function (stem) {
+      var sel = items.indexOf(self.overrides[stem] || core.MENU_AUTO);
+      self.deps.ui.menu(stem, items, sel < 0 ? 0 : sel);
+    });
+    self.renderSummary();
+    return state;
+  });
+};
+
+Orchestrator.prototype.renderSummary = function () {
+  if (this.analysis) this.deps.ui.summary(core.formatSummary(this.analysis, this.mapping(), this.state));
+};
+
+Orchestrator.prototype.setFile = function (rawPath) {
+  this.file = core.toPosixPath(rawPath, this.deps.exists);
+  this.analysis = null;
+  this.status("Datei: " + this.file.split("/").pop() + " - jetzt 'Analysieren'");
+  return this.file;
+};
+
+Orchestrator.prototype.setOption = function (name, value) {
+  if (Object.prototype.hasOwnProperty.call(this.options, name)) this.options[name] = !!Number(value);
+};
+
+Orchestrator.prototype.setOverride = function (stem, item) {
+  this.overrides[stem] = item;
+  this.renderSummary();
+};
+
+Orchestrator.prototype.ensureEngine = function () {
+  var self = this;
+  var d = self.deps;
+  return d.engine.health().catch(function () {
+    if (!d.startEngine()) {
+      throw new Error("Engine nicht erreichbar. Bitte 'start-engine.sh' ausfuehren (siehe README).");
+    }
+    self.status("Starte Analyse-Engine ...");
+    var tries = 0;
+    function poll() {
+      return d.sleep(1000).then(function () {
+        return d.engine.health().catch(function (e) {
+          if (++tries >= 40) throw new Error("Engine startet nicht: " + e.message);
+          return poll();
+        });
+      });
+    }
+    return poll();
+  });
+};
+
+Orchestrator.prototype.analyze = function () {
+  var self = this;
+  var d = self.deps;
+  return self._exclusive("Analyse", function () {
+    if (!self.file) throw new Error("Zuerst eine MP3 auf das Feld ziehen.");
+    return self.ensureEngine().then(function (health) {
+      self.status("Analyse gestartet" + (health && health.demucs_available ? " (Demucs)" : " (ohne Demucs)"));
+      return d.engine.createJob(self.file, d.separation || "auto");
+    }).then(function (job) {
+      function poll() {
+        return d.engine.getJob(job.job_id).then(function (j) {
+          if (j.status === "done") return j.result;
+          if (j.status === "error") throw new Error(j.error || "Analyse fehlgeschlagen");
+          self.status("Analyse " + Math.round(j.progress * 100) + "%: " + j.message);
+          return d.sleep(1000).then(poll);
+        });
+      }
+      return poll();
+    }).then(function (result) {
+      self.analysis = result;
+      return self.refreshTracks().catch(function () { return null; });
+    }).then(function () {
+      self.renderSummary();
+      self.status("Analyse fertig: " + self.analysis.sections.length + " Songteile, " +
+        self.analysis.suggested_devices.length + " Effekt-Vorschlaege");
+      return self.analysis;
+    });
+  });
+};
+
+Orchestrator.prototype._insertMissingDevices = function (plan, report) {
+  var self = this;
+  var d = self.deps;
+  var missing = plan.devices.filter(function (dev) { return !dev.present; });
+  return missing.reduce(function (p, dev) {
+    return p.then(function () {
+      var track = core.trackByIndex(self.state, dev.track);
+      self.status("Fuege " + dev.device + " auf '" + track.name + "' ein ...");
+      return d.remote.request({ cmd: "load_device", track_index: dev.track, device: dev.device })
+        .then(function () { return d.sleep(300); })
+        .then(function () { return d.lom({ op: "get_state" }); })
+        .then(function (state) {
+          self.state = state;
+          if (core.findDevice(core.trackByIndex(state, dev.track), dev.class_name)) {
+            report.devices_inserted.push(dev.device + " -> " + track.name);
+          } else {
+            report.warnings.push(dev.device + " wurde auf '" + track.name + "' nicht gefunden.");
+          }
+        }, function (err) {
+          report.warnings.push(dev.device + " nicht eingefuegt: " + err.message);
+        });
+    });
+  }, Promise.resolve());
+};
+
+// Fuer jede (Spur, Geraeteklasse, Parameter): LOM-Indizes + Umrechnung Hz/dB -> Rohwert.
+Orchestrator.prototype._resolveTargets = function (plan, report) {
+  var self = this;
+  var d = self.deps;
+  var targets = {};
+  var jobs = [];
+  plan.tracks.forEach(function (t) {
+    t.clips.forEach(function (c) {
+      c.envelopes.forEach(function (e) {
+        var key = t.track + "|" + e.class_name + "|" + e.parameter;
+        if (!targets[key]) { targets[key] = null; jobs.push({ key: key, track: t.track, env: e }); }
+      });
+    });
+  });
+  return jobs.reduce(function (p, job) {
+    return p.then(function () {
+      var track = core.trackByIndex(self.state, job.track);
+      var dev = core.findDevice(track, job.env.class_name);
+      if (!dev) {
+        report.warnings.push("Kein " + job.env.device + " auf '" + track.name + "': Automation uebersprungen.");
+        return null;
+      }
+      return d.lom({ op: "get_params", track: job.track, device: dev.index }).then(function (res) {
+        var param = core.findParam(res.params, job.env.parameter);
+        if (!param) {
+          report.warnings.push("Parameter '" + job.env.parameter + "' in " + job.env.device + " nicht gefunden.");
+          return null;
+        }
+        return d.lom({ op: "sample_param", track: job.track, device: dev.index, param: param.index, count: 64 })
+          .then(function (s) {
+            var inv = core.buildInverseMap(s.samples, job.env.unit);
+            if (!inv) {
+              report.warnings.push("Werte von " + job.env.device + "/" + param.name + " nicht lesbar.");
+              return null;
+            }
+            targets[job.key] = { device: dev.index, param: param.index, toRaw: inv };
+          });
+      });
+    });
+  }, Promise.resolve()).then(function () { return targets; });
+};
+
+Orchestrator.prototype.apply = function () {
+  var self = this;
+  var d = self.deps;
+  return self._exclusive("Anwenden", function () {
+    if (!self.analysis) throw new Error("Zuerst analysieren.");
+    var report = { locators: 0, clips: 0, envelopes: 0, devices_inserted: [], warnings: [] };
+    var plan;
+    var scene = null;
+    return d.lom({ op: "get_state" }).then(function (state) {
+      self.state = state;
+      plan = core.buildPlan(self.analysis, state, self.options, self.mapping());
+      report.warnings = report.warnings.concat(plan.warnings);
+      if (plan.tempo) return d.lom({ op: "set_tempo", tempo: plan.tempo });
+    }).then(function () {
+      return plan.locators.reduce(function (p, loc) {
+        return p.then(function () {
+          return d.lom({ op: "set_locator", time: loc.time, name: loc.name }).then(function () { report.locators++; });
+        });
+      }, Promise.resolve());
+    }).then(function () {
+      if (self.options.apply_automation) return self._insertMissingDevices(plan, report);
+    }).then(function () {
+      return self._resolveTargets(plan, report);
+    }).then(function (targets) {
+      if (!plan.tracks.length) return null;
+      return d.lom({ op: "create_scene" }).then(function (res) {
+        scene = res.scene_index;
+        return plan.tracks.reduce(function (p, t) {
+          return t.clips.reduce(function (p2, c) {
+            return p2.then(function () {
+              self.status("Clip '" + c.name + "' auf '" + t.name + "' ...");
+              return self._buildClip(t, c, scene, targets, report);
+            });
+          }, p);
+        }, Promise.resolve());
+      });
+    }).then(function () {
+      return self._finish(scene, report);
+    }, function (err) {
+      return self._finish(scene, report).then(function () { throw err; });
+    });
+  });
+};
+
+Orchestrator.prototype._buildClip = function (t, c, scene, targets, report) {
+  var d = this.deps;
+  return d.lom({ op: "create_clip", track: t.track, scene: scene, length: c.length, name: c.name,
+    color_index: c.color_index }).then(function () {
+    return c.envelopes.reduce(function (p, e) {
+      var target = targets[t.track + "|" + e.class_name + "|" + e.parameter];
+      if (!target) return p;
+      var steps = e.steps.map(function (s) { return [s[0], s[1], target.toRaw(s[2])]; });
+      return p.then(function () {
+        return d.lom({ op: "write_envelope", track: t.track, scene: scene, device: target.device,
+          param: target.param, steps: steps }).then(function () { report.envelopes++; });
+      });
+    }, Promise.resolve());
+  }).then(function () {
+    return d.lom({ op: "duplicate_to_arrangement", track: t.track, scene: scene, time: c.start });
+  }).then(function () {
+    report.clips++;
+    return d.lom({ op: "delete_clip", track: t.track, scene: scene });
+  });
+};
+
+Orchestrator.prototype._finish = function (scene, report) {
+  var self = this;
+  var cleanup = scene === null ? Promise.resolve() :
+    self.deps.lom({ op: "delete_scene", scene_index: scene }).catch(function (e) {
+      report.warnings.push("Hilfs-Szene nicht geloescht: " + e.message);
+    });
+  return cleanup.then(function () {
+    self.lastReport = report;
+    var text = "Fertig: " + report.locators + " Locators, " + report.clips + " Clips, " + report.envelopes +
+      " Automationen" + (report.devices_inserted.length ? ", eingefuegt: " + report.devices_inserted.join(", ") : "");
+    self.status(text);
+    var summary = core.formatSummary(self.analysis, self.mapping(), self.state);
+    if (report.warnings.length) summary += "\n\nHinweise beim Anwenden:\n  " + report.warnings.join("\n  ");
+    self.deps.ui.summary(summary);
+    return report;
+  });
+};
+
+module.exports = { Orchestrator: Orchestrator };
