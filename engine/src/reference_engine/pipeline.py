@@ -17,6 +17,7 @@ from .tempo import BeatGrid, estimate_grid
 ProgressFn = Callable[[float, str], None]
 
 STEM_ORDER = ("drums", "bass", "other", "vocals")
+ABSENT_BELOW_MIX_DB = 30.0
 
 
 def _noop(_p: float, _m: str) -> None:
@@ -64,20 +65,27 @@ def analyze_audio(y: np.ndarray, path: str | Path, separation: str = "auto", sha
     stems_out: list[dict] = []
     suggestions: list[dict] = []
     hints: list[dict] = []
+    mix_level = stem_curves(y, grid).level_db
     names = [n for n in STEM_ORDER if n in sep.stems] + [n for n in sep.stems if n not in STEM_ORDER]
     for i, name in enumerate(names):
         progress(0.6 + 0.35 * i / max(1, len(names)), f"Automation: {name}")
         curves = stem_curves(sep.stems[name], grid)
-        filt = filter_automation(curves)
-        gain = gain_automation(curves, exclude=filt["ramps"] if filt else None)
+        # Stems weit unter dem Mix sind Trennungs-Uebersprechen (z. B. "vocals" in einem Instrumental).
+        present = curves.level_db >= mix_level - ABSENT_BELOW_MIX_DB
+        filt = filter_automation(curves) if present else None
+        gain = gain_automation(curves, exclude=filt["ramps"] if filt else None) if present else None
         automation = [a for a in (filt, gain) if a]
         stems_out.append({
             "name": name,
             "separation": sep.method,
+            "present": bool(present),
             "level_db": round(curves.level_db, 1),
-            "active_sections": _active_sections(curves.active, sections, grid.beats_per_bar),
+            "active_sections": (_active_sections(curves.active, sections, grid.beats_per_bar) if present
+                                else [False] * len(sections)),
             "automation": automation,
         })
+        if not present:
+            continue
         for a in automation:
             ramps = a.get("ramps", [])
             kind = "Cutoff-Sweep" if a["target"] == "filter_cutoff" else "Fade"

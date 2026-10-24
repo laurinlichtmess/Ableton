@@ -58,10 +58,11 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "separation", "level_db", "active_sections", "automation"],
+        "required": ["name", "separation", "present", "level_db", "active_sections", "automation"],
         "properties": {
           "name": {"type": "string"},
           "separation": {"enum": ["demucs", "bands"]},
+          "present": {"type": "boolean", "description": "false = Stem praktisch stumm (nur Uebersprechen)"},
           "level_db": {"type": "number"},
           "active_sections": {"type": "array", "items": {"type": "boolean"}},
           "automation": {"type": "array", "items": {"$ref": "#/$defs/automation"}}

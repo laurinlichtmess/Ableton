@@ -136,4 +136,7 @@ test("formatSummary enthaelt Songteile, Zuordnung und Vorschlaege", function () 
   assert.ok(text.indexOf("drums -> 1: Kick & Drums") !== -1);
   assert.ok(text.indexOf("other -> -") !== -1);
   assert.ok(text.indexOf("Auto Filter") !== -1);
+  var silent = JSON.parse(JSON.stringify(analysis));
+  silent.stems.push({ name: "vocals", present: false, active_sections: [], automation: [] });
+  assert.ok(core.formatSummary(silent, { vocals: 4 }, { tracks: TRACKS }).indexOf("vocals -> 5: Lead Vox (in Referenz stumm)") !== -1);
 });

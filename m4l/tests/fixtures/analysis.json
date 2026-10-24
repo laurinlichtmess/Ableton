@@ -124,6 +124,7 @@
   {
    "name": "drums",
    "separation": "bands",
+   "present": true,
    "level_db": -33.1,
    "active_sections": [
     true,
@@ -404,6 +405,7 @@
   {
    "name": "bass",
    "separation": "bands",
+   "present": true,
    "level_db": -21.7,
    "active_sections": [
     true,
@@ -522,6 +524,7 @@
   {
    "name": "other",
    "separation": "bands",
+   "present": true,
    "level_db": -26.1,
    "active_sections": [
     true,

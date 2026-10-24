@@ -94,6 +94,31 @@ def test_snapshot(analysis):
     assert summary == json.loads(SNAPSHOT.read_text())
 
 
+def test_silent_stem_is_marked_absent(monkeypatch, song_mp3):
+    """Uebersprechen (z. B. 'vocals' bei einem Instrumental) erzeugt weder Clips noch Automation."""
+    import numpy as np
+
+    from reference_engine import pipeline
+    from reference_engine.audio import load_mono
+    from reference_engine.separation import SeparationResult
+
+    path, _ = song_mp3
+    y = load_mono(path)
+
+    def fake_separate(p, audio, method="auto", sha1=None, progress=None):
+        bleed = (audio * 10 ** (-55 / 20)).astype(np.float32)
+        return SeparationResult("demucs", {"drums": audio, "vocals": bleed}), []
+
+    monkeypatch.setattr(pipeline, "separate", fake_separate)
+    result = pipeline.analyze_audio(y, path)
+    jsonschema.validate(result, schema())
+    stems = {s["name"]: s for s in result["stems"]}
+    assert stems["drums"]["present"] is True
+    assert stems["vocals"]["present"] is False
+    assert not any(stems["vocals"]["active_sections"]) and stems["vocals"]["automation"] == []
+    assert all(d["stem"] != "vocals" for d in result["suggested_devices"])
+
+
 def test_m4l_fixture_matches_schema():
     """Vertrag Engine <-> M4L: die Fixture der JS-Tests muss dem aktuellen Schema entsprechen."""
     fixture = Path(__file__).resolve().parents[2] / "m4l" / "tests" / "fixtures" / "analysis.json"

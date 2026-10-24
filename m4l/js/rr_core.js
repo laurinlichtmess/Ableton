@@ -263,9 +263,11 @@ function formatSummary(analysis, mapping, state) {
   });
   if (mapping) {
     lines.push("Zuordnung:");
+    var absent = {};
+    (analysis.stems || []).forEach(function (s) { if (s.present === false) absent[s.name] = true; });
     Object.keys(mapping).forEach(function (stem) {
       var tr = mapping[stem] === null ? null : trackByIndex(state, mapping[stem]);
-      lines.push("  " + stem + " -> " + (tr ? menuItemForTrack(tr) : "-"));
+      lines.push("  " + stem + " -> " + (tr ? menuItemForTrack(tr) : "-") + (absent[stem] ? " (in Referenz stumm)" : ""));
     });
   }
   if ((analysis.suggested_devices || []).length) {
