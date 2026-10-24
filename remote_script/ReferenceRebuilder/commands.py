@@ -1,7 +1,7 @@
 # Befehle des Remote Scripts. Keine Live-Imports: song/application werden hereingereicht.
 # Python 3.7 (Live 11): keine Walrus-Operatoren, keine match-Statements, keine neuen Typ-Generics.
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 BROWSER_CATEGORIES = ("audio_effects", "instruments", "midi_effects")
 MAX_SEARCH_DEPTH = 4
 
@@ -95,3 +95,47 @@ class CommandHandler(object):
         browser.load_item(item)
         self._log("ReferenceRebuilder: %s auf '%s' geladen" % (item.name, track.name))
         return {"device": str(item.name), "track": str(track.name), "devices_before": devices_before}
+
+    def cmd_write_envelope(self, msg):
+        # Clip.automation_envelope/create_automation_envelope gibt es nur in der Python-API;
+        # Max for Live (Live 11) bietet sie nicht an.
+        _, track = self._track(msg)
+        scene = _index(msg, "scene_index", len(track.clip_slots), "Clip-Slot")
+        slot = track.clip_slots[scene]
+        if not slot.has_clip:
+            raise CommandError("Kein Clip in Slot %d von '%s'" % (scene, track.name))
+        clip = slot.clip
+        devices = list(track.devices)
+        device = devices[_index(msg, "device_index", len(devices), "Device")]
+        params = list(device.parameters)
+        param = params[_index(msg, "parameter_index", len(params), "Parameter")]
+        steps = msg.get("steps")
+        if not isinstance(steps, list):
+            raise CommandError("steps fehlt")
+
+        envelope = clip.automation_envelope(param)
+        if envelope is None:
+            envelope = clip.create_automation_envelope(param)
+        if envelope is None:
+            raise CommandError("Envelope fuer '%s' konnte nicht angelegt werden" % param.name)
+
+        lo, hi = float(param.min), float(param.max)
+        written = 0
+        for step in steps:
+            try:
+                time, length, value = float(step[0]), float(step[1]), float(step[2])
+            except (TypeError, ValueError, IndexError):
+                raise CommandError("Ungueltiger Schritt: %r" % (step,))
+            envelope.insert_step(time, length, min(hi, max(lo, value)))
+            written += 1
+        return {"steps_written": written, "parameter": str(param.name), "clip": str(clip.name)}
+
+
+def _index(msg, key, count, what):
+    try:
+        index = int(msg.get(key))
+    except (TypeError, ValueError):
+        raise CommandError("%s fehlt oder ist ungueltig" % key)
+    if index < 0 or index >= count:
+        raise CommandError("%s %d existiert nicht (%d vorhanden)" % (what, index, count))
+    return index

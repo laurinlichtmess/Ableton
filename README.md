@@ -2,8 +2,9 @@
 
 Ein Max-for-Live-Device, das eine Referenz-MP3 analysiert und daraus im aktuellen Live-Set das
 **Arrangement-Gerüst** (Tempo, benannte Locators, Clips pro Songteil) und **Automationen**
-(Filter-Cutoff über Auto Filter, Lautstärke-Fades über Utility) nachbaut. Fehlende Effekte fügt ein kleines
-**Companion Remote Script** ein, weil Max for Live in Live 11 keine Geräte einfügen kann.
+(Filter-Cutoff über Auto Filter, Lautstärke-Fades über Utility) nachbaut. Fehlende Effekte und die
+Clip-Automation erledigt ein kleines **Companion Remote Script**, weil Max for Live in Live 11 weder Geräte
+einfügen noch Clip-Envelopes anlegen kann (`Clip.automation_envelope` gibt es nur in der Python-API).
 
 Nachgebaut werden nur Struktur, Automation und Effekt-Vorschläge – keine Noten und keine Sounds.
 
@@ -12,16 +13,17 @@ flowchart LR
   User["MP3 per Drag and Drop"] --> M4L["Max for Live Device"]
   M4L -->|"HTTP 127.0.0.1:47821"| Engine["Python-Analyse-Engine"]
   Engine -->|"JSON"| M4L
-  M4L -->|"Live API (LOM)"| LiveSet["Locators, Clips, Clip-Envelopes"]
+  M4L -->|"Live API (LOM)"| LiveSet["Tempo, Locators, Clips"]
   M4L -->|"UDP 127.0.0.1:47822"| Remote["Remote Script"]
   Remote -->|"browser.load_item"| Devices["Auto Filter / Utility"]
+  Remote -->|"Python-API"| Envelopes["Clip-Envelopes"]
 ```
 
 | Teil | Ordner | Aufgabe |
 |---|---|---|
 | Analyse-Engine | `engine/` | Tempo/Beatgrid, Songteile, Stems (Demucs), Automationskurven, FastAPI-Dienst |
 | M4L-Device | `m4l/` | Oberfläche, Engine-Anbindung, Umsetzung im Live-Set |
-| Remote Script | `remote_script/ReferenceRebuilder/` | Lädt Geräte über die Browser-API auf eine Spur |
+| Remote Script | `remote_script/ReferenceRebuilder/` | Lädt Geräte über die Browser-API, schreibt Clip-Envelopes |
 | Installer | `install.sh`, `start-engine.sh` | Einrichten, Kopieren, Engine starten |
 
 ## Voraussetzungen
@@ -77,7 +79,8 @@ Liegt deine User Library woanders (Live: *Einstellungen › Library*), so:
    - **Automation/Effekte**: fehlende Auto Filter/Utility einfügen und Kurven als Clip-Envelopes schreiben
    - **Tempo übernehmen**: Song-Tempo auf das erkannte Tempo setzen
 6. **Anwenden** klicken. Die Statuszeile meldet am Ende, was angelegt wurde; Hinweise (z. B. Audiospuren)
-   stehen im Textfeld.
+   stehen im Textfeld. Schlägt ein einzelner Schritt fehl (ein Locator, ein Clip, eine Automation), läuft
+   Anwenden weiter und der Fehler steht unter „Hinweise beim Anwenden“.
 
 **Tipp:** Vorher das Set speichern bzw. eine Kopie anlegen. Jede Änderung ist ein eigener Undo-Schritt.
 
@@ -87,9 +90,10 @@ Liegt deine User Library woanders (Live: *Einstellungen › Library*), so:
   erkannter Taktanfang der Referenz; die Referenz-Audiodatei ggf. um `first_downbeat_sec` nach links schieben).
   Ein bereits vorhandener Locator an derselben Position wird nur umbenannt.
 - Für jede zugeordnete **MIDI-Spur** wird eine temporäre Szene angelegt, darin pro Songteil ein leerer
-  MIDI-Clip in Songteil-Länge (benannt und nach Abschnittsgruppe eingefärbt) mit Clip-Envelopes für
-  *Auto Filter › Frequency* bzw. *Utility › Gain*. Der Clip wird mit `duplicate_clip_to_arrangement` an die
-  richtige Stelle im Arrangement kopiert; die temporäre Szene wird danach wieder gelöscht.
+  MIDI-Clip in Songteil-Länge (benannt und nach Abschnittsgruppe eingefärbt). Die Clip-Envelopes für
+  *Auto Filter › Frequency* bzw. *Utility › Gain* schreibt das Remote Script (`write_envelope`). Der Clip wird
+  mit `duplicate_clip_to_arrangement` an die richtige Stelle im Arrangement kopiert; die temporäre Szene wird
+  danach wieder gelöscht. Ohne aktives Remote Script entstehen Locators und Clips trotzdem, nur ohne Automation.
 - **Effekte**: Ist auf der Spur noch kein Auto Filter (`AutoFilter`) bzw. Utility (`StereoGain`), lädt das
   Remote Script ihn ans Ende der Geräte-Kette.
 - Hz/dB werden über `str_for_value` des jeweiligen Parameters in Live-Rohwerte umgerechnet, damit die Kurven
