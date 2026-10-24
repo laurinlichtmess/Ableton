@@ -12,12 +12,12 @@ from pathlib import Path
 from typing import Callable, Literal
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from . import DEFAULT_PORT, SCHEMA_VERSION, __version__
 from .audio import AudioError, validate_path
 from .pipeline import analyze_file
-from .separation import demucs_available
+from .separation import demucs_available, resolve_device
 
 Separation = Literal["auto", "demucs", "bands"]
 AnalyzeFn = Callable[..., dict]
@@ -26,13 +26,20 @@ AnalyzeFn = Callable[..., dict]
 class AnalyzeRequest(BaseModel):
     path: str
     separation: Separation = "auto"
+    bpm_hint: float | None = Field(default=None, ge=20, le=999)
+    bpm_min: float | None = Field(default=None, ge=20, le=999)
+    bpm_max: float | None = Field(default=None, ge=20, le=999)
 
 
 class Job:
-    def __init__(self, path: str, separation: str):
+    def __init__(self, path: str, separation: str, bpm_hint: float | None = None,
+                 bpm_min: float | None = None, bpm_max: float | None = None):
         self.id = uuid.uuid4().hex[:12]
         self.path = path
         self.separation = separation
+        self.bpm_hint = bpm_hint
+        self.bpm_min = bpm_min
+        self.bpm_max = bpm_max
         self.status = "queued"
         self.progress = 0.0
         self.message = "Wartet"
@@ -62,7 +69,8 @@ def create_app(analyze: AnalyzeFn = analyze_file, max_jobs: int = 20) -> FastAPI
             job.progress, job.message = p, msg
 
         try:
-            job.result = analyze(job.path, separation=job.separation, progress=progress)
+            job.result = analyze(job.path, separation=job.separation, progress=progress,
+                                 bpm_hint=job.bpm_hint, bpm_min=job.bpm_min, bpm_max=job.bpm_max)
             job.status, job.progress, job.message = "done", 1.0, "Fertig"
         except Exception as exc:
             job.status, job.error, job.message = "error", str(exc), "Fehler"
@@ -70,24 +78,30 @@ def create_app(analyze: AnalyzeFn = analyze_file, max_jobs: int = 20) -> FastAPI
     @app.get("/health")
     def health() -> dict:
         return {"status": "ok", "engine_version": __version__, "schema_version": SCHEMA_VERSION,
-                "demucs_available": demucs_available(), "port": DEFAULT_PORT}
+                "demucs_available": demucs_available(), "device": resolve_device(), "port": DEFAULT_PORT}
+
+    def _kwargs(req: AnalyzeRequest) -> dict:
+        return {"separation": req.separation, "bpm_hint": req.bpm_hint,
+                "bpm_min": req.bpm_min, "bpm_max": req.bpm_max}
 
     @app.post("/analyze")
     def analyze_sync(req: AnalyzeRequest) -> dict:
         try:
             validate_path(req.path)
-            return analyze(req.path, separation=req.separation)
+            return analyze(req.path, **_kwargs(req))
         except AudioError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     @app.post("/analyze/upload")
-    def analyze_upload(file: UploadFile = File(...), separation: Separation = Form("auto")) -> dict:
+    def analyze_upload(file: UploadFile = File(...), separation: Separation = Form("auto"),
+                       bpm_hint: float | None = Form(None), bpm_min: float | None = Form(None),
+                       bpm_max: float | None = Form(None)) -> dict:
         suffix = Path(file.filename or "upload.mp3").suffix or ".mp3"
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             shutil.copyfileobj(file.file, tmp)
         try:
             validate_path(tmp.name)
-            return analyze(tmp.name, separation=separation)
+            return analyze(tmp.name, separation=separation, bpm_hint=bpm_hint, bpm_min=bpm_min, bpm_max=bpm_max)
         except AudioError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         finally:
@@ -99,7 +113,7 @@ def create_app(analyze: AnalyzeFn = analyze_file, max_jobs: int = 20) -> FastAPI
             validate_path(req.path)
         except AudioError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        job = Job(req.path, req.separation)
+        job = Job(req.path, req.separation, req.bpm_hint, req.bpm_min, req.bpm_max)
         with lock:
             if len(jobs) >= max_jobs:
                 oldest = sorted((j for j in jobs.values() if j.status in ("done", "error")), key=lambda j: j.created)

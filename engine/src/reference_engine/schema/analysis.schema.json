@@ -2,11 +2,11 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://reference-rebuilder.local/analysis.schema.json",
   "title": "Reference Rebuilder Analyse",
-  "description": "Positionen in Beats (Viertel) relativ zum ersten Taktanfang der Referenz (= Arrangement-Position 1.1.1 in Live).",
+  "description": "Positionen in Beats (Viertel) relativ zum ersten Taktanfang der Referenz (= Arrangement-Position 1.1.1 in Live). Stems sind feine Elemente (Kick, Bass, Clap, ...).",
   "type": "object",
   "required": ["schema_version", "engine_version", "source", "tempo", "sections", "separation", "stems", "suggested_devices", "hints", "warnings"],
   "properties": {
-    "schema_version": {"const": 1},
+    "schema_version": {"const": 2},
     "engine_version": {"type": "string"},
     "source": {
       "type": "object",
@@ -28,7 +28,10 @@
         "first_downbeat_sec": {"type": "number", "minimum": 0},
         "beat_sec": {"type": "number", "exclusiveMinimum": 0},
         "bar_sec": {"type": "number", "exclusiveMinimum": 0},
-        "num_bars": {"type": "integer", "minimum": 1}
+        "num_bars": {"type": "integer", "minimum": 1},
+        "downbeat_confidence": {"type": "number", "minimum": 0, "maximum": 1},
+        "source": {"type": "string"},
+        "candidates": {"type": "array"}
       }
     },
     "sections": {
@@ -36,10 +39,11 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["index", "label", "group", "start_bar", "end_bar", "bars", "start_beat", "length_beats", "start_sec", "end_sec", "energy"],
+        "required": ["index", "label", "kind", "group", "start_bar", "end_bar", "bars", "start_beat", "length_beats", "start_sec", "end_sec", "energy", "elements"],
         "properties": {
           "index": {"type": "integer", "minimum": 0},
           "label": {"type": "string", "minLength": 1},
+          "kind": {"enum": ["intro", "outro", "main", "drop", "breakdown", "build", "groove"]},
           "group": {"type": "string", "pattern": "^[A-Z]$"},
           "start_bar": {"type": "integer", "minimum": 0},
           "end_bar": {"type": "integer", "minimum": 1},
@@ -49,22 +53,31 @@
           "start_sec": {"type": "number"},
           "end_sec": {"type": "number"},
           "energy": {"type": "number", "minimum": 0, "maximum": 1},
-          "trend_db_per_bar": {"type": "number"}
+          "trend_db_per_bar": {"type": "number"},
+          "elements": {"type": "array", "items": {"type": "string"}},
+          "added": {"type": "array", "items": {"type": "string"}},
+          "removed": {"type": "array", "items": {"type": "string"}}
         }
       }
     },
     "separation": {"enum": ["demucs", "bands"]},
+    "device": {"type": "string", "description": "Torch-Geraet fuer Demucs (mps/cuda/cpu)"},
     "stems": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["name", "separation", "present", "level_db", "active_sections", "automation"],
+        "required": ["name", "display_name", "separation", "present", "level_db", "active_sections", "presence_bars", "presence", "automation"],
         "properties": {
-          "name": {"type": "string"},
+          "name": {"enum": ["kick", "bass", "clap", "hats", "ride", "perc", "atmo", "synth", "vocals"]},
+          "display_name": {"type": "string"},
+          "parent": {"type": ["string", "null"]},
           "separation": {"enum": ["demucs", "bands"]},
-          "present": {"type": "boolean", "description": "false = Stem praktisch stumm (nur Uebersprechen)"},
+          "present": {"type": "boolean", "description": "false = Element praktisch stumm"},
           "level_db": {"type": "number"},
           "active_sections": {"type": "array", "items": {"type": "boolean"}},
+          "presence_bars": {"type": "array", "items": {"type": "boolean"}},
+          "presence": {"type": "array", "items": {"type": "number", "minimum": 0, "maximum": 1}},
+          "active_spans": {"type": "array", "items": {"type": "array", "items": {"type": "integer"}, "minItems": 2, "maxItems": 2}},
           "automation": {"type": "array", "items": {"$ref": "#/$defs/automation"}}
         }
       }

@@ -19,6 +19,9 @@ def main(argv: list[str] | None = None) -> int:
     p_an.add_argument("path")
     p_an.add_argument("-o", "--output", help="JSON-Datei (Standard: stdout)")
     p_an.add_argument("--separation", choices=["auto", "demucs", "bands"], default="auto")
+    p_an.add_argument("--bpm", type=float, default=None, help="BPM-Hinweis (enger Suchbereich)")
+    p_an.add_argument("--bpm-min", type=float, default=None, help="Untergrenze der BPM-Suche")
+    p_an.add_argument("--bpm-max", type=float, default=None, help="Obergrenze der BPM-Suche")
 
     args = parser.parse_args(argv)
     if args.cmd == "serve":
@@ -32,7 +35,8 @@ def main(argv: list[str] | None = None) -> int:
     def progress(p: float, msg: str) -> None:
         print(f"[{p * 100:5.1f}%] {msg}", file=sys.stderr)
 
-    result = analyze_file(args.path, separation=args.separation, progress=progress)
+    result = analyze_file(args.path, separation=args.separation, progress=progress,
+                          bpm_hint=args.bpm, bpm_min=args.bpm_min, bpm_max=args.bpm_max)
     text = json.dumps(result, indent=2, ensure_ascii=False)
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:

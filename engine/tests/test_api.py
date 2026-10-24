@@ -6,12 +6,13 @@ from reference_engine import DEFAULT_PORT
 from reference_engine.api import create_app
 
 
-def fake_analyze(path, separation="auto", progress=None):
+def fake_analyze(path, separation="auto", progress=None, bpm_hint=None, bpm_min=None, bpm_max=None):
     if progress:
         progress(0.5, "halb")
     if "fail" in str(path):
         raise RuntimeError("kaputt")
-    return {"schema_version": 1, "source": {"path": str(path)}, "separation": separation}
+    return {"schema_version": 2, "source": {"path": str(path)}, "separation": separation,
+            "bpm_hint": bpm_hint}
 
 
 def client() -> TestClient:
@@ -24,6 +25,8 @@ def test_health():
     body = r.json()
     assert body["status"] == "ok" and body["port"] == DEFAULT_PORT == 47821
     assert isinstance(body["demucs_available"], bool)
+    assert body["device"] in ("cpu", "cuda", "mps") or body["device"].startswith("cuda")
+    assert body["schema_version"] == 2
 
 
 def test_analyze_sync(tmp_path):
