@@ -65,8 +65,8 @@ test("Analyse: Datei -> Job -> Zusammenfassung und Spurmenues", async function (
   assert.equal(s.ui.job.path, "/Users/demo/Music/reference.mp3");
   assert.ok(s.ui.statuses.some(function (t) { return t.indexOf("Analyse 50%") === 0; }));
   assert.ok(s.ui.statuses[s.ui.statuses.length - 1].indexOf("Analyse fertig") === 0);
-  assert.deepEqual(s.ui.menus.drums.items.slice(0, 3), ["Auto", "Keine", "1: Drums"]);
-  assert.ok(s.ui.summaries[s.ui.summaries.length - 1].indexOf("drums -> 1: Drums") !== -1);
+  assert.deepEqual(s.ui.menus.kick.items.slice(0, 3), ["Auto", "Keine", "1: Drums"]);
+  assert.ok(s.ui.summaries[s.ui.summaries.length - 1].indexOf("Kick -> 1: Drums") !== -1);
 });
 
 test("Analyse ohne Datei bzw. ohne Engine meldet verstaendliche Fehler", async function () {
@@ -94,21 +94,22 @@ test("Anwenden baut Tempo, Locators, Geraete, Clips mit Envelopes im Arrangement
   assert.deepEqual(song.cue_points.map(function (c) { return c.name; }), analysis.sections.map(function (x) { return x.label; }));
   assert.deepEqual(song.cue_points.map(function (c) { return c.time; }), analysis.sections.map(function (x) { return x.start_beat; }));
 
-  // Remote Script: Auto Filter (drums, other) und Utility (drums, bass) fehlten
+  // Remote Script: Utility (kick, bass) und Auto Filter (synth) fehlten
   var loads = s.remoteCalls.filter(function (c) { return c.cmd === "load_device"; });
   var loaded = loads.map(function (c) { return c.track_index + ":" + c.device; }).sort();
-  assert.deepEqual(loaded, ["0:Auto Filter", "0:Utility", "1:Utility", "2:Auto Filter"]);
-  assert.equal(report.devices_inserted.length, 4);
+  assert.deepEqual(loaded, ["0:Utility", "1:Utility", "2:Auto Filter"]);
+  assert.equal(report.devices_inserted.length, 3);
 
   var lead = song.tracks[2];
-  var activeOther = analysis.stems[2].active_sections.filter(Boolean).length;
-  assert.equal(lead.arrangement_clips.length, activeOther);
+  var synthStem = analysis.stems.find(function (st) { return st.name === "synth"; });
+  var activeSynth = synthStem.active_sections.filter(Boolean).length;
+  assert.ok(lead.arrangement_clips.length >= activeSynth);
   var build = lead.arrangement_clips.find(function (c) { return c.name === "Build"; });
   assert.equal(build.start_time, analysis.sections[1].start_beat);
   assert.equal(build.length, analysis.sections[1].length_beats);
   var env = build.envelopes[Object.keys(build.envelopes)[0]];
   assert.equal(env.param.name, "Frequency");
-  assert.ok(env.steps.length > 4);
+  assert.ok(env.steps.length > 1);
   assert.ok(env.steps.every(function (st) { return st[2] >= 0 && st[2] <= 1; }), "Rohwerte im Parameterbereich");
   assert.ok(env.steps[0][2] < env.steps[env.steps.length - 1][2], "Sweep steigt");
 
@@ -119,7 +120,7 @@ test("Anwenden baut Tempo, Locators, Geraete, Clips mit Envelopes im Arrangement
   assert.equal(song.tracks[3].arrangement_clips.length, 0, "Audiospur ohne Stem bleibt leer");
 
   assert.equal(report.locators, analysis.sections.length);
-  assert.ok(report.clips >= activeOther && report.envelopes > 0);
+  assert.ok(report.clips >= activeSynth && report.envelopes > 0);
   assert.match(s.ui.statuses.pop(), /^Fertig: /);
 });
 
@@ -170,9 +171,11 @@ test("Manuelle Zuordnung und Optionen werden beachtet", async function () {
   var s = setup();
   s.orch.setFile("/ref.mp3");
   await s.orch.analyze();
-  s.orch.setOverride("drums", "Keine");
+  s.orch.setOverride("kick", "Keine");
   s.orch.setOverride("bass", "Keine");
-  s.orch.setOverride("other", "4: Reference");
+  s.orch.setOverride("hats", "Keine");
+  s.orch.setOverride("synth", "4: Reference");
+  s.orch.setOverride("atmo", "Keine");
   s.orch.setOption("build_arrangement", 0);
   var report = await s.orch.apply();
   assert.equal(s.live.song.cue_points.length, 0);

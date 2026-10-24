@@ -14,6 +14,9 @@ var DEFAULTS = {
   remote_port: 47822,
   engine_start_command: null,
   separation: "auto",
+  bpm_hint: null,
+  bpm_min: null,
+  bpm_max: null,
 };
 
 function configPath(home) {

@@ -66,7 +66,11 @@ var orchestrator = new Orchestrator({
   engine: {
     health: function () { return transport.httpJson("GET", engineUrl + "/health", undefined, 2000); },
     createJob: function (path, separation) {
-      return transport.httpJson("POST", engineUrl + "/jobs", { path: path, separation: separation }, 10000);
+      var body = { path: path, separation: separation };
+      if (config.bpm_hint != null) body.bpm_hint = Number(config.bpm_hint);
+      if (config.bpm_min != null) body.bpm_min = Number(config.bpm_min);
+      if (config.bpm_max != null) body.bpm_max = Number(config.bpm_max);
+      return transport.httpJson("POST", engineUrl + "/jobs", body, 10000);
     },
     getJob: function (id) { return transport.httpJson("GET", engineUrl + "/jobs/" + id, undefined, 10000); },
   },
