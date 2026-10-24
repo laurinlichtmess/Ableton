@@ -6,9 +6,10 @@ var STEMS = ["drums", "bass", "other", "vocals"];
 var MENU_AUTO = "Auto";
 var MENU_NONE = "Keine";
 
+// Spezifischere Stichworte zuerst. Kein generisches "loop" (Audio-Sample-Namen stehlen sonst MIDI-Spuren).
 var STEM_KEYWORDS = {
-  drums: ["drum", "kick", "snare", "hat", "perc", "beat", "clap", "schlagzeug", "top", "loop"],
-  bass: ["bass", "sub", "808", "reese"],
+  drums: ["kick", "snare", "drum", "schlagzeug", "hat", "perc", "beat", "clap", "top"],
+  bass: ["bass", "sub", "808", "reese", "303"],
   vocals: ["vocal", "vox", "voc", "gesang", "stimme", "sing", "acapella", "chant"],
   other: ["synth", "lead", "pad", "chord", "key", "piano", "guitar", "gitarre", "arp", "pluck", "string", "other", "melod", "fx"],
 };
@@ -31,16 +32,25 @@ function usableTracks(tracks) {
   return (tracks || []).filter(function (t) { return !t.is_foldable; });
 }
 
+// Stichwort-Treffer; kurze Spurnamen ("kick", "drums") schlagen lange Audio-Sample-Namen.
 function scoreTrack(stem, name) {
   var n = String(name || "").toLowerCase();
   var words = STEM_KEYWORDS[stem] || [];
+  var best = 0;
   for (var i = 0; i < words.length; i++) {
-    if (n.indexOf(words[i]) !== -1) return words.length - i;
+    var w = words[i];
+    if (n.indexOf(w) === -1) continue;
+    var s = (words.length - i) * 10;
+    if (n === w) s += 8;
+    else if (n.length <= 16) s += 4;
+    if (n.length > 28) s -= 20; // z. B. "24-seedj_drum_loop_corp-hats_132"
+    if (s > best) best = s;
   }
-  return 0;
+  return best > 0 ? best : 0;
 }
 
 // Automatische Zuordnung Stem -> Spurindex nach Spurnamen (jede Spur hoechstens einmal).
+// MIDI-Spuren gewinnen gegen Audiospuren: Arrangement-Clips gehen in Live 11 nur auf MIDI.
 function autoMapStems(stemNames, tracks) {
   var mapping = {};
   var used = {};
@@ -50,11 +60,13 @@ function autoMapStems(stemNames, tracks) {
   order.sort(function (a, b) { return (a === "other") - (b === "other"); });
   order.forEach(function (stem) {
     var best = null;
-    var bestScore = 0;
+    var bestRank = -1;
     usableTracks(tracks).forEach(function (t) {
       if (used[t.index]) return;
       var s = scoreTrack(stem, t.name);
-      if (s > bestScore) { best = t.index; bestScore = s; }
+      if (s <= 0) return;
+      var rank = s + (t.has_midi_input ? 1000 : 0);
+      if (rank > bestRank) { best = t.index; bestRank = rank; }
     });
     mapping[stem] = best;
     if (best !== null) used[best] = true;
@@ -219,8 +231,8 @@ function buildPlan(analysis, state, options, mapping) {
       }
     });
     if (!track.has_midi_input && (opts.build_arrangement || automation.length)) {
-      plan.warnings.push("'" + track.name + "' ist eine Audiospur: Live 11 kann dort keine leeren Clips anlegen. " +
-        "Clip-Geruest/Automation nur auf MIDI-Spuren (Effekte werden trotzdem eingefuegt).");
+      plan.warnings.push("'" + track.name + "' (" + stem.name + ") ist eine Audiospur: Live 11 legt Clip-Geruest " +
+        "nur auf MIDI-Spuren an. Bitte im Device eine MIDI-Spur waehlen (Effekte werden trotzdem eingefuegt).");
       return;
     }
     var clips = [];
@@ -285,6 +297,7 @@ module.exports = {
   MENU_NONE: MENU_NONE,
   DEVICE_CLASS: DEVICE_CLASS,
   toPosixPath: toPosixPath,
+  scoreTrack: scoreTrack,
   autoMapStems: autoMapStems,
   resolveMapping: resolveMapping,
   menuItems: menuItems,

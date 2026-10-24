@@ -44,12 +44,12 @@ test("set_locator legt an, benennt und stellt Song-Position wieder her", functio
   var s = setup();
   s.live.song.current_song_time = 5;
   var r = s.bridge.raw({ op: "set_locator", time: 32, name: "Drop 1" });
-  assert.deepEqual(r.result, { created: true, name_ok: true });
+  assert.deepEqual(r.result, { created: true, name_ok: true, name: "Drop 1" });
   assert.deepEqual(s.live.song.cue_points.map(function (c) { return [c.time, c.name]; }), [[32, "Drop 1"]]);
   assert.equal(s.live.song.current_song_time, 5);
   // Zweiter Aufruf an gleicher Stelle loescht nicht (set_or_delete_cue wuerde togglen), sondern benennt um.
   r = s.bridge.raw({ op: "set_locator", time: 32, name: "Drop" });
-  assert.deepEqual(r.result, { created: false, name_ok: true });
+  assert.deepEqual(r.result, { created: false, name_ok: true, name: "Drop" });
   assert.equal(s.live.song.cue_points.length, 1);
   assert.equal(s.live.song.cue_points[0].name, "Drop");
 });

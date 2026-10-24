@@ -332,6 +332,11 @@ Orchestrator.prototype._finish = function (scene, report) {
       (report.warnings.length ? " - " + report.warnings.length + " Hinweis(e) im Textfeld" : "");
     self.status(text);
     var summary = core.formatSummary(self.analysis, self.mapping(), self.state);
+    if (report.clips > 0) {
+      summary += "\n\nHinweis: Die MIDI-Clips sind absichtlich leer (kein Noteninhalt) – sie tragen " +
+        "das Songteil-Geruest. Automationen liegen nach dem Duplizieren in den Arrangement-Automationsspuren " +
+        "(Spur oeffnen / Automation einblenden), nicht als Noten im Clip.";
+    }
     if (report.warnings.length) summary += "\n\nHinweise beim Anwenden:\n  " + report.warnings.join("\n  ");
     self.deps.ui.summary(summary);
     return report;

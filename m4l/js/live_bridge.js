@@ -120,6 +120,21 @@ function liveIndex(i, what) {
 	return n;
 }
 
+// Namen mit Leerzeichen: MxDCore kann "Drop 1" als zwei Atome lesen und "Invalid syntax"
+// loggen. Ein zusammenhaengender String ohne Leerzeichen ist der sichere Fallback.
+function setLiveName(obj, name) {
+	var wanted = String(name == null ? "" : name);
+	try {
+		obj.set("name", wanted);
+		if (str(obj, "name") === wanted) {
+			return { name: wanted, name_ok: true };
+		}
+	} catch (e1) { /* Fallback unten */ }
+	var safe = wanted.replace(/\s+/g, "_");
+	obj.set("name", safe);
+	return { name: safe, name_ok: str(obj, "name") === safe };
+}
+
 function findCue(song, time) {
 	var n = song.getcount("cue_points");
 	for (var i = 0; i < n; i++) {
@@ -202,10 +217,9 @@ var HANDLERS = {
 		if (idx < 0) {
 			throw new Error("Locator bei Beat " + time + " konnte nicht gesetzt werden");
 		}
-		var name = String(req.name);
 		var cue = api("live_set cue_points " + idx, "cue");
-		cue.set("name", name);
-		return { created: created, name_ok: str(cue, "name") === name };
+		var named = setLiveName(cue, req.name);
+		return { created: created, name_ok: named.name_ok, name: named.name };
 	},
 
 	create_scene: function () {
@@ -230,11 +244,11 @@ var HANDLERS = {
 		}
 		slot.call("create_clip", length);
 		var clip = api(slotPath(req.track, req.scene) + " clip", "clip");
-		clip.set("name", String(req.name));
+		var named = setLiveName(clip, req.name);
 		if (req.color_index !== null && req.color_index !== undefined) {
 			clip.set("color_index", liveIndex(req.color_index, "color_index"));
 		}
-		return {};
+		return { name: named.name, name_ok: named.name_ok };
 	},
 
 	delete_clip: function (req) {

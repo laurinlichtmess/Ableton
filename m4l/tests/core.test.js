@@ -26,6 +26,23 @@ test("autoMapStems ordnet nach Namen zu, Gruppen werden ignoriert, Spuren nur ei
   assert.deepEqual(m2, { drums: null, bass: null });
 });
 
+test("autoMapStems bevorzugt MIDI gegenueber Audio-Sample-Namen (CursorTest-Fall)", function () {
+  var tracks = [
+    { index: 2, name: "kick", has_midi_input: true, is_foldable: false },
+    { index: 8, name: "perc synth", has_midi_input: true, is_foldable: false },
+    { index: 23, name: "24-seedj_drum_loop_corp-hats_132", has_midi_input: false, is_foldable: false },
+    { index: 29, name: "u like that", has_midi_input: true, is_foldable: false },
+    { index: 30, name: "audio vocales", has_midi_input: false, is_foldable: false },
+  ];
+  var m = core.autoMapStems(["drums", "bass", "other", "vocals"], tracks);
+  assert.equal(m.drums, 2, "drums -> kick (MIDI), nicht Audio-drum_loop");
+  assert.equal(m.other, 8, "other -> perc synth");
+  assert.equal(m.vocals, 30);
+  assert.equal(m.bass, null);
+  assert.ok(core.scoreTrack("drums", "kick") > 0);
+  assert.ok(core.scoreTrack("drums", "kick") >= core.scoreTrack("drums", "24-seedj_drum_loop_corp-hats_132"));
+});
+
 test("resolveMapping beruecksichtigt manuelle Auswahl", function () {
   var stems = ["drums", "bass", "other"];
   var m = core.resolveMapping(stems, TRACKS, { drums: "Keine", bass: "4: Lead Synth", other: "Auto" });
