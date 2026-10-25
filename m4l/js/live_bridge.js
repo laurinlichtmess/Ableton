@@ -128,18 +128,26 @@ function liveIndex(i, what) {
 }
 
 // Namen mit Leerzeichen: MxDCore kann "Drop 1" als zwei Atome lesen und "Invalid syntax"
-// loggen. Ein zusammenhaengender String ohne Leerzeichen ist der sichere Fallback.
+// loggen. Deshalb zuerst Underscore-Form setzen (vermeidet Log-Spam), sonst Original.
 function setLiveName(obj, name) {
 	var wanted = String(name == null ? "" : name);
+	var safe = wanted.replace(/\s+/g, "_");
+	if (safe !== wanted && safe.length) {
+		try {
+			obj.set("name", safe);
+			if (str(obj, "name") === safe) {
+				return { name: safe, name_ok: true };
+			}
+		} catch (e0) { /* Original versuchen */ }
+	}
 	try {
 		obj.set("name", wanted);
 		if (str(obj, "name") === wanted) {
 			return { name: wanted, name_ok: true };
 		}
 	} catch (e1) { /* Fallback unten */ }
-	var safe = wanted.replace(/\s+/g, "_");
-	obj.set("name", safe);
-	return { name: safe, name_ok: str(obj, "name") === safe };
+	obj.set("name", safe.length ? safe : "Clip");
+	return { name: str(obj, "name"), name_ok: true };
 }
 
 function findCue(song, time) {
@@ -373,7 +381,8 @@ function findArrangementClipAt(trackIndex, time) {
 	return api(trackPath(trackIndex) + " arrangement_clips " + best, "aclip");
 }
 
-// Loop-Klammer beibehalten, Clip auf Abschnittslaenge bringen (Noten bleiben, werden geloopt).
+// Loop-Klammer beibehalten (typisch 8 Takte / 32 Beats), Clip auf Abschnittslaenge bringen.
+// Noten/Audio bleiben einmalig; Live loopt ueber die Brace. Kein Noten-Verdoppeln.
 function stretchClipToLength(clip, length, opts) {
 	opts = opts || {};
 	var loopStart = num(clip, "loop_start");
@@ -383,14 +392,18 @@ function stretchClipToLength(clip, length, opts) {
 	if (!(sourceLen > 0.05)) {
 		sourceLen = length;
 	}
-	clip.set("looping", 1);
-	if (looping) {
-		clip.set("loop_start", liveNum(loopStart, "loop_start"));
-		clip.set("loop_end", liveNum(loopEnd, "loop_end"));
-	} else {
-		clip.set("loop_start", 0);
-		clip.set("loop_end", liveNum(sourceLen, "loop_end"));
+	// Optional: feste Loop-Laenge vom Planner (8-Takt-Klammer), sonst Quelle.
+	var brace = opts.loop_length != null ? Number(opts.loop_length) : sourceLen;
+	if (!(brace > 0.05) || !isFinite(brace)) {
+		brace = sourceLen;
 	}
+	// Brace darf die Clip-Laenge nicht ueberschreiten (Live lehnt das ab).
+	if (brace > length) {
+		brace = length;
+	}
+	clip.set("looping", 1);
+	clip.set("loop_start", 0);
+	clip.set("loop_end", liveNum(brace, "loop_end"));
 	// Session: end_marker = Laenge. Arrangement: end_time absolut.
 	if (opts.arrangement && opts.time != null) {
 		try {
@@ -412,8 +425,14 @@ function stretchClipToLength(clip, length, opts) {
 	}
 }
 
-function stretchArrangementClip(clip, time, length, colorIndex, name) {
-	stretchClipToLength(clip, length, { arrangement: true, time: time, color_index: colorIndex, name: name });
+function stretchArrangementClip(clip, time, length, colorIndex, name, loopLength) {
+	stretchClipToLength(clip, length, {
+		arrangement: true,
+		time: time,
+		color_index: colorIndex,
+		name: name,
+		loop_length: loopLength
+	});
 }
 
 var HANDLERS = {
@@ -632,7 +651,7 @@ var HANDLERS = {
 		if (!clip) {
 			throw new Error("Kein Arrangement-Clip bei Beat " + time);
 		}
-		stretchArrangementClip(clip, time, length, req.color_index, req.name);
+		stretchArrangementClip(clip, time, length, req.color_index, req.name, req.loop_length);
 		return {
 			start_time: num(clip, "start_time"),
 			color_index: Math.floor(num(clip, "color_index")),
@@ -672,7 +691,8 @@ var HANDLERS = {
 		return { deleted: true, device_index: index };
 	},
 
-	// Quell-Loop (Session oder Arrangement) an section-Zeit legen und auf Abschnittslaenge loopen.
+	// Quell-Loop (Session oder Arrangement) einmal an section-Zeit legen und auf volle
+	// Region-Laenge strecken; Loop-Brace = 8-Takt-Quelle (loop_length), nicht N× Duplikate.
 	place_loop: function (req) {
 		var trackIdx = liveIndex(req.track, "track");
 		var time = liveNum(req.time, "time");
@@ -689,6 +709,16 @@ var HANDLERS = {
 		var color = req.color_index !== null && req.color_index !== undefined
 			? liveIndex(req.color_index, "color_index")
 			: Math.floor(num(source, "color_index"));
+		var loopLength = req.loop_length != null ? liveNum(req.loop_length, "loop_length") : null;
+		if (loopLength == null) {
+			var srcLooping = num(source, "looping") === 1;
+			loopLength = srcLooping
+				? liveNum(num(source, "loop_end") - num(source, "loop_start"), "loop_length")
+				: liveNum(num(source, "length"), "loop_length");
+			if (!(loopLength > 0.05)) {
+				loopLength = 32;
+			}
+		}
 		api(trackPath(trackIdx), "track").call(
 			"duplicate_clip_to_arrangement", "id", Number(source.id), time
 		);
@@ -696,7 +726,7 @@ var HANDLERS = {
 		if (!placed) {
 			throw new Error("Loop konnte nicht ins Arrangement gelegt werden (Beat " + time + ")");
 		}
-		stretchArrangementClip(placed, time, length, color, req.name);
+		stretchArrangementClip(placed, time, length, color, req.name, loopLength);
 		var placedNotes = clipNoteCount(placed);
 		if (srcNotes > 0 && placedNotes === 0) {
 			throw new Error("Noten gingen beim Duplizieren verloren");
@@ -706,7 +736,9 @@ var HANDLERS = {
 			color_index: Math.floor(num(placed, "color_index")),
 			source_kind: kind,
 			source_index: liveIndex(req.source_index, "source"),
-			note_count: placedNotes
+			note_count: placedNotes,
+			length: length,
+			loop_length: loopLength
 		};
 	}
 };

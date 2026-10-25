@@ -44,21 +44,32 @@ async function main() {
 
   var plan = orch.buildPlan();
   var stats = core.planStats(plan);
-  console.log("Plan:", stats.tracks, "Spuren,", stats.clips, "Clips,", stats.locators, "Locators");
+  console.log("Plan:", stats.tracks, "Spuren,", stats.clips, "Abschnitts-Clips,", stats.locators, "Locators, tempo", plan.tempo);
   assert.ok(stats.clips > 0);
+  assert.ok(stats.clips < 30, "keine Dutzende 8-Bar-Kacheln — Abschnitts-Clips erwartet");
+  assert.equal(plan.tempo, 145);
 
   var report = await orch.toArr();
   assert.ok(report.clips > 0);
   assert.ok(report.locators >= 6);
+  assert.equal(report.tempo, 145);
 
   var kick = live.song.tracks[0];
   var cover = kick.arrangement_clips.reduce(function (s, c) { return s + c.length; }, 0);
   console.log("Kick arrangement clips:", kick.arrangement_clips.length, "cover beats:", cover);
-  assert.ok(kick.arrangement_clips.length > 0);
+  assert.equal(kick.arrangement_clips.length, 2, "Kick: 2 Regionen, nicht 14 Kacheln");
   assert.ok(kick.arrangement_clips.every(function (c) { return c.color_index === 12; }));
   assert.ok(kick.arrangement_clips.every(function (c) { return c.notes && c.notes.length > 0; }));
+  assert.ok(kick.arrangement_clips.every(function (c) {
+    return c.looping === 1 && (c.loop_end - c.loop_start) === 32 && c.length > 32;
+  }));
 
-  console.log("\nDRY OK — loop-sketch-templates+scene1-tiles+locators+colors");
+  // Hats durchgehend aktiv → genau 1 Clip ueber volle Template-Laenge
+  var hats = live.song.tracks[2];
+  assert.equal(hats.arrangement_clips.length, 1);
+  assert.equal(hats.arrangement_clips[0].length, plan.length_beats);
+
+  console.log("\nDRY OK — section-clips+8bar-loop-brace+145bpm+locators+colors");
 }
 
 main().catch(function (e) {

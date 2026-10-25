@@ -83,7 +83,7 @@ test("activeRegions fasst benachbarte Sections zusammen", function () {
   assert.equal(hats[1].end, 96);
 });
 
-test("buildRoleTiles kachelt 8-Bar-Loop nur in aktiven Regionen", function () {
+test("buildRoleTiles: ein Clip pro aktiver Region (kein 8-Bar-Kacheln)", function () {
   var templates = loadAll();
   var tpl = templates.find(function (t) { return t.id === "techno-peak"; });
   assert.ok(tpl);
@@ -93,16 +93,40 @@ test("buildRoleTiles kachelt 8-Bar-Loop nur in aktiven Regionen", function () {
   var inBreak = tiled.tiles.filter(function (c) {
     return c.start >= 224 - 1e-6 && c.start < 288 - 1e-6;
   });
-  assert.equal(inBreak.length, 0, "keine Kick-Kacheln im Break");
+  assert.equal(inBreak.length, 0, "keine Kick-Clips im Break");
   var cover = tiled.tiles.reduce(function (s, c) { return s + c.length; }, 0);
   // Total 112 bars = 448 beats; break 16 bars = 64 beats → 384 active
   assert.equal(cover, 384);
+  // Peak kick: Intro+Build+DropA zusammengefasst, dann DropB+Outro → 2 Regionen, 2 Clips
+  assert.equal(tiled.tiles.length, tiled.regions.length);
+  assert.ok(tiled.tiles.length <= 3, "wenige Abschnitts-Clips, nicht Dutzende Kacheln");
   tiled.tiles.forEach(function (c) {
     assert.equal(c.color_index, 12);
     assert.equal(c.source_kind, "session");
     assert.equal(c.source_index, 0);
-    assert.ok(c.length <= 32);
+    assert.equal(c.loop_length, 32, "Loop-Brace = 8 Takte");
+    assert.ok(c.length >= 32, "Clip deckt ganze Region ab, nicht nur 8 Takte");
+    assert.ok(!/\s/.test(c.name), "Live-sicherer Name ohne Leerzeichen");
   });
+});
+
+test("buildPlan setzt Tempo 145 und Safe-Locator-Namen", function () {
+  var templates = loadAll();
+  var tpl = templates.find(function (t) { return t.id === "techno-warehouse"; });
+  var state = {
+    tracks: [
+      { index: 0, name: "Kick", has_midi_input: true, is_foldable: false,
+        scene1_clip: { kind: "session", index: 0, length: 32, color_index: 1, name: "k" } },
+    ],
+  };
+  var plan = core.buildPlan(tpl, state, { kick: 0 }, {});
+  assert.equal(plan.tempo, 145);
+  assert.ok(plan.locators.every(function (l) { return !/\s/.test(l.name); }));
+  var kick = plan.tracks[0];
+  // Warehouse kick: 2 Regionen (Intro..DropA, DropB..Outro) → 2 Clips, nicht 14×8-Bar
+  assert.equal(kick.clips.length, 2);
+  assert.equal(kick.clips[0].length, 64 * 4); // 64 Takte
+  assert.equal(kick.clips[1].length, 48 * 4); // 48 Takte
 });
 
 test("buildPlan: Mapping + Scene-1 → Locators und Clips", function () {

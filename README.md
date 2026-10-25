@@ -3,8 +3,9 @@
 ## Loop Sketch (Hauptprodukt)
 
 **Loop Sketch** ist ein Max-for-Live Arrangement-Tool im Stil von Song Sketch: eigene Genre-Templates
-(JSON), Session-Szene-1-Loops den Roles zuordnen, **To Arr** legt die Loops als Kacheln ins Arrangement
-und setzt Locators. Keine MP3-Analyse, kein Demucs — nur deine Loops × Template-Presence.
+(JSON), Session-Szene-1-Loops (ganze **8 Takte**) den Roles zuordnen, **To Arr** legt **pro aktiver
+Region einen langen Arrangement-Clip** (8-Takt-Quelle gelooppt) und setzt Locators. Tempo immer
+**145 BPM**. Keine MP3-Analyse, kein Demucs — nur deine Loops × Template-Presence.
 
 | Teil | Ordner | Aufgabe |
 |---|---|---|
@@ -26,9 +27,9 @@ und setzt Locators. Keine MP3-Analyse, kein Demucs — nur deine Loops × Templa
 1. In **Session-Szene 1** pro Spur einen Loop ablegen (MIDI oder Audio, typisch 8 Takte).
 2. Device **Loop Sketch** laden → Template wählen (z. B. Techno Warehouse).
 3. **Role → Spur**: Auto nach Namen (Kick, Bass, Hats, …) oder Menü; **Spuren** aktualisiert die Liste.
-4. **To Arr**: Für jede gemappte Role wird der Scene-1-Clip über alle **aktiven** Template-Regionen
-   gekachelt (`place_loop` → Noten/Audio + Farbe bleiben). Locators an den Abschnittsanfängen.
-5. Optional: Toggle **BPM-Hinweis setzen** übernimmt `bpm_hint` aus dem Template.
+4. **To Arr**: Für jede gemappte Role entsteht **ein Clip pro zusammenhängender aktiver Region**
+   (volle Abschnittslänge, Loop-Brace = 8 Takte; `place_loop`). Keine Dutzende identischer 8-Bar-Kopien.
+   Locators an den Abschnittsanfängen. Tempo wird auf **145** gesetzt.
 
 ### Templates
 

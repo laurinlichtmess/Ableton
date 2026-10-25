@@ -59,7 +59,7 @@ test("get_state liefert scene1_clip", function () {
   assert.equal(state.result.tracks[0].scene1_clip.color_index, 12);
 });
 
-test("To Arr dry-run: Kacheln + Locators + Farben aus Szene 1", async function () {
+test("To Arr dry-run: Abschnitts-Clips + Locators + 145 BPM + Farben", async function () {
   var s = setup();
   await s.orch.refreshTracks();
   s.orch.setTemplateByMenu("Techno — Techno Peak Time");
@@ -67,22 +67,29 @@ test("To Arr dry-run: Kacheln + Locators + Farben aus Szene 1", async function (
   assert.ok(report);
   assert.ok(report.locators >= 6);
   assert.ok(report.clips > 0);
+  assert.equal(report.tempo, 145);
+  assert.equal(s.live.song.tempo, 145);
 
   var kick = s.live.song.tracks[0];
-  assert.ok(kick.arrangement_clips.length >= 2);
+  // Peak kick: 2 Regionen → 2 lange Clips (nicht 12× 8-Bar-Duplikate)
+  assert.equal(kick.arrangement_clips.length, 2);
   kick.arrangement_clips.forEach(function (c) {
     assert.equal(c.color_index, 12);
     assert.ok(c.notes && c.notes.length > 0);
+    assert.equal(c.looping, 1);
+    assert.equal(c.loop_end - c.loop_start, 32);
+    assert.ok(c.length > 32, "Clip laenger als 8-Takt-Quelle, gelooppt");
   });
-  // Break bei Beat 224–288: keine Kick-Clips
+  // Break bei Beat 224–288: keine Kick-Clips die dort starten oder die Region fuellen
   var inBreak = kick.arrangement_clips.filter(function (c) {
-    return c.start_time >= 224 - 0.05 && c.start_time < 288 - 0.05;
+    var end = c.start_time + c.length;
+    return c.start_time < 288 - 0.05 && end > 224 + 0.05;
   });
   assert.equal(inBreak.length, 0);
 
   var cues = s.live.song.cue_points.map(function (c) { return c.name; });
   assert.ok(cues.indexOf("Intro") >= 0);
-  assert.ok(cues.indexOf("Drop A") >= 0);
+  assert.ok(cues.indexOf("Drop_A") >= 0 || cues.indexOf("Drop A") >= 0);
   assert.ok(cues.indexOf("Break") >= 0);
 });
 
