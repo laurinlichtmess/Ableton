@@ -1,15 +1,63 @@
-# Ableton Reference Rebuilder (Live 11 Suite, macOS)
+# Loop Sketch (Ableton Live 11) + Reference Rebuilder
+
+## Loop Sketch (Hauptprodukt)
+
+**Loop Sketch** ist ein Max-for-Live Arrangement-Tool im Stil von Song Sketch: eigene Genre-Templates
+(JSON), Session-Szene-1-Loops den Roles zuordnen, **To Arr** legt die Loops als Kacheln ins Arrangement
+und setzt Locators. Keine MP3-Analyse, kein Demucs — nur deine Loops × Template-Presence.
+
+| Teil | Ordner | Aufgabe |
+|---|---|---|
+| Templates | `templates/` | Techno×3, House×2, Tech House×1 — Sections + Role-Presence |
+| M4L-Device | `m4l/LoopSketch/` | UI: Template, Role→Spur, Spuren, **To Arr** |
+| Logik | `m4l/js/ls_*.js` + `live_bridge.js` | Planen, `place_loop`, Locators |
+| Remote Script | `remote_script/LoopSketch/` | Optional (Ping/UDP 47823); To Arr braucht es nicht |
+| Installer | `install.sh` | Device + Templates + Remote Script |
+
+### Installation (Loop Sketch)
+
+```bash
+./install.sh
+# Live neu starten → Device „LoopSketch“ aus der User Library auf eine Spur
+```
+
+### Bedienung
+
+1. In **Session-Szene 1** pro Spur einen Loop ablegen (MIDI oder Audio, typisch 8 Takte).
+2. Device **Loop Sketch** laden → Template wählen (z. B. Techno Warehouse).
+3. **Role → Spur**: Auto nach Namen (Kick, Bass, Hats, …) oder Menü; **Spuren** aktualisiert die Liste.
+4. **To Arr**: Für jede gemappte Role wird der Scene-1-Clip über alle **aktiven** Template-Regionen
+   gekachelt (`place_loop` → Noten/Audio + Farbe bleiben). Locators an den Abschnittsanfängen.
+5. Optional: Toggle **BPM-Hinweis setzen** übernimmt `bpm_hint` aus dem Template.
+
+### Templates
+
+Eigene JSON unter `templates/` (siehe bestehende Dateien). Pflichtfelder: `id`, `name`, `genre`,
+`sections[]` (`start_bar`, `length_bars`, `label`), `roles` mit `presence` (bool pro Section) oder
+`active_bars` (`[start, end)` in Takten) für kick/bass/hats/perc/synth/pad/fx.
+
+### Tests
+
+```bash
+node --test m4l/tests/ls_*.test.js
+node m4l/tests/dry_loop_sketch.js
+python3 -m pytest tests/test_installer.py m4l/tests/test_ls_device.py -q
+python3 m4l/LoopSketch/build_device.py   # nach UI-Änderungen
+```
+
+Retest in Live: [`docs/retest-loop-sketch-de.md`](docs/retest-loop-sketch-de.md).
+
+---
+
+## Reference Rebuilder (älterer Pfad, optional)
 
 Ein Max-for-Live-Device, das eine Referenz-MP3 analysiert und daraus im aktuellen Live-Set ein
-**spielbares Arrangement in voller Referenzlänge** baut: Tempo, benannte Locators, und den
-**~8-Takt-Loop** jeder zugeordneten Spur (Session- oder Arrangement-Clip am Spuranfang) **über die
-gesamte Tracklänge gekachelt** – **MIDI-Noten und Farbe des Original-Loops bleiben**. Zusätzlich
-optional **Automationen** (Filter-Cutoff / Utility-Gain). Fehlende Effekte und Clip-Envelopes erledigt
-ein kleines **Companion Remote Script**, weil Max for Live in Live 11 weder Geräte einfügen noch
-Clip-Envelopes anlegen kann (`Clip.automation_envelope` gibt es nur in der Python-API).
+**spielbares Arrangement in voller Referenzlänge** baut. Bleibt im Repo; **nicht** der Default-Install.
 
-Es werden **keine leeren MIDI-Clips** erzeugt und keine neuen Sounds erfunden – nur deine Loops,
-wiederholt bis zur Referenzdauer (auch wenn die MP3-Analyse dünn oder falsch ist).
+```bash
+./install.sh --with-reference-rebuilder   # Device + Remote Script
+./install.sh --with-engine                # inkl. Demucs-Engine
+```
 
 ```mermaid
 flowchart LR
@@ -36,80 +84,11 @@ flowchart LR
 - Internetzugang bei der Installation (uv, Python-Pakete, Demucs-Modell). Mit Demucs braucht die
   Installation etwa 1–2 GB Platz (PyTorch).
 
-## Installation
+### Reference Rebuilder — Installation & Bedienung
 
-```bash
-git clone <dieses-repo> ~/ReferenceRebuilder
-cd ~/ReferenceRebuilder
-./install.sh            # mit Demucs (empfohlen)
-# ./install.sh --no-stems   # ohne Demucs: schneller, aber nur grobe Stem-Trennung ohne Vocals
-```
-
-Das Skript
-
-1. installiert bei Bedarf [uv](https://docs.astral.sh/uv/) und richtet die Engine in `engine/.venv` ein,
-2. lädt das Demucs-Modell `htdemucs` vor,
-3. kopiert das Remote Script nach `~/Music/Ableton/User Library/Remote Scripts/ReferenceRebuilder`,
-4. kopiert das Device samt JavaScript nach
-   `~/Music/Ableton/User Library/Presets/Audio Effects/Max Audio Effect/Reference Rebuilder`,
-5. schreibt `~/Library/Application Support/ReferenceRebuilder/config.json` (Ports, Startbefehl der Engine).
-
-Liegt deine User Library woanders (Live: *Einstellungen › Library*), so:
-`RR_USER_LIBRARY="/Pfad/zur/User Library" ./install.sh`. Deinstallieren: `./install.sh --uninstall`.
-
-### Control Surface aktivieren
-
-1. Live 11 neu starten.
-2. *Einstellungen › Link/Tempo/MIDI › Control Surface*: in einer freien Zeile **ReferenceRebuilder**
-   wählen, Eingang und Ausgang auf **Keine** lassen.
-3. Unten in der Statusleiste erscheint kurz „Reference Rebuilder bereit (UDP 47822)“.
-
-## Bedienung
-
-1. Device **Reference Rebuilder** aus der User Library auf eine beliebige Spur ziehen (z. B. Master oder eine
-   eigene „Referenz“-Audiospur).
-2. MP3 auf das Drop-Feld ziehen und **Analysieren** klicken. Die Engine wird bei Bedarf automatisch gestartet;
-   mit Demucs dauert die Analyse je nach Mac einige Minuten (Fortschritt in der Statuszeile). Ergebnisse
-   werden pro Datei zwischengespeichert (`~/.cache/reference-rebuilder`).
-3. Rechts erscheinen Tempo, Songteile (z. B. Intro, Build, Drop, Breakdown, Outro), die Zuordnung der
-   Elemente zu deinen Spuren und Effekt-Vorschläge.
-4. **Element → Spur**: Die Zuordnung erfolgt automatisch nach Spurnamen
-   (Kick, Bass, Clap/Snare, Hats, Ride, Perc, Atmo/Pads, Synth/Lead, Vocals) und lässt sich pro Element
-   im Menü ändern („Keine“ = ignorieren). **Spuren** aktualisiert die Liste.
-5. Optionen:
-   - **Arrangement anlegen**: Locators + deine Loops über die **volle Referenzlänge** kacheln
-     (Presence-Stille nur optional; bei dünner Analyse trotzdem durchgehend spielbar)
-   - **Automation/Effekte**: fehlende Auto Filter/Utility einfügen und Kurven schreiben
-   - **Tempo übernehmen**: Song-Tempo auf das erkannte Tempo setzen
-6. **Anwenden** klicken. Die Statuszeile meldet am Ende, was angelegt wurde; Hinweise (z. B. Spur ohne
-   Loop am Anfang) stehen im Textfeld. Schlägt ein einzelner Schritt fehl, läuft Anwenden weiter
-   („Hinweise beim Anwenden“).
-
-**Tipp:** Vorher das Set speichern bzw. eine Kopie anlegen. Jede Änderung ist ein eigener Undo-Schritt.
-Pro Spur sollte am Anfang ein brauchbarer Loop liegen (Session-Slot oder Arrangement-Clip bei Takt 1,
-typisch 1–8 Takte) – den nutzt Anwenden als Quelle.
-
-### Was im Set passiert
-
-- **Tempo** wird gesetzt, **Locators** werden an den Songteil-Anfängen gesetzt und benannt (Beat 0 = erster
-  erkannter Taktanfang der Referenz; die Referenz-Audiodatei ggf. um `first_downbeat_sec` nach links schieben).
-  Ein bereits vorhandener Locator an derselben Position wird nur umbenannt.
-- Für jede zugeordnete Spur mit erkanntem **Quell-Loop** wird dieser Clip **über die volle
-  Referenzlänge gekachelt** (Dauer aus Analyse: Abschnittsende / `duration_sec`×BPM / `num_bars`,
-  das Maximum), behält **Noten und Farbe des Originals**. Presence-basierte Stille ist optional und
-  greift nur bei belastbarer Presence; sonst durchgehende Kachelung. MIDI- und Audiospuren
-  funktionieren, solange ein Loop existiert. Fehlt der Loop, erscheint ein Hinweis und die Spur
-  bekommt keine Arrangement-Clips.
-- **Automation** (optional): Nur bei **hörbarer** Kurve (nicht flach/neutral). Session-Loop oder
-  Arrangement-**MIDI** wird in eine Hilfs-Szene materialisiert (Session: `duplicate_clip_to`; Arrangement-MIDI:
-  `create_clip` + Noten kopieren), Envelopes schreibt das Remote Script (`write_envelope`), dann
-  `duplicate_clip_to_arrangement`. Arrangement-**Audio** ohne Session-Loop: Clips ja, Utility/Filter
-  übersprungen (Hinweis im Textfeld). Ohne Remote Script: Loops/Locators trotzdem, ohne Kurven.
-- **Effekte**: Auto Filter / Utility nur, wenn danach wirklich Envelopes geschrieben werden. Schlägt das
-  Schreiben fehl oder die Kurve ist leer/neutral, wird ein gerade eingefügtes Gerät wieder entfernt
-  (kein Orphan-FX).
-- Hz/dB werden über `str_for_value` des jeweiligen Parameters in Live-Rohwerte umgerechnet, damit die Kurven
-  unabhängig von der internen Skalierung stimmen.
+Siehe Abschnitte unten bzw. ältere Checkliste [`docs/test-checkliste-live11.md`](docs/test-checkliste-live11.md).
+Kurz: Control Surface **ReferenceRebuilder**, Device laden, MP3 analysieren, **Anwenden** kachelt Loops
+über die Referenzlänge (optional Automation via Remote Script).
 
 ## Analyse-Engine einzeln nutzen
 
@@ -157,10 +136,13 @@ Andere Ports: `config.json` anpassen; für das Remote Script zusätzlich `PORT` 
 ## Entwicklung und Tests
 
 ```bash
-cd engine && uv sync && uv run pytest        # Engine, Device-Struktur, Remote Script, Installer
-RUN_DEMUCS_TESTS=1 uv run pytest tests/test_demucs_integration.py   # echter Demucs-Lauf (nach --extra stems)
-node --test m4l/tests/*.test.js              # Device-Logik (Node 18+)
-python3 m4l/build_device.py                  # .amxd/.maxpat nach Änderungen am Patch neu erzeugen
+node --test m4l/tests/ls_*.test.js           # Loop Sketch (Templates + To Arr)
+node m4l/tests/dry_loop_sketch.js
+python3 -m pytest tests/test_installer.py m4l/tests/test_ls_device.py -q
+cd engine && uv sync && uv run pytest        # RR-Engine + Legacy-Tests
+node --test m4l/tests/*.test.js              # inkl. Reference Rebuilder
+python3 m4l/LoopSketch/build_device.py       # Loop Sketch Device
+python3 m4l/build_device.py                  # Reference Rebuilder Device
 ```
 
 - Die Engine-Tests erzeugen synthetische Songs (`engine/tests/synth.py`) und Hardgroove-Signale

@@ -1,0 +1,25 @@
+{
+  "id": "house-deep",
+  "name": "House Deep",
+  "genre": "House",
+  "bpm_hint": 120,
+  "beats_per_bar": 4,
+  "description": "Deep House: weiches Intro, Pads durchgehend, Kick im Break ruhend.",
+  "sections": [
+    { "id": "intro", "label": "Intro", "start_bar": 0, "length_bars": 24 },
+    { "id": "groove", "label": "Groove", "start_bar": 24, "length_bars": 16 },
+    { "id": "drop_a", "label": "Drop A", "start_bar": 40, "length_bars": 24 },
+    { "id": "break", "label": "Break", "start_bar": 64, "length_bars": 16 },
+    { "id": "drop_b", "label": "Drop B", "start_bar": 80, "length_bars": 24 },
+    { "id": "outro", "label": "Outro", "start_bar": 104, "length_bars": 16 }
+  ],
+  "roles": {
+    "kick":  { "presence": [false, true,  true,  false, true,  true ] },
+    "bass":  { "presence": [false, true,  true,  false, true,  false] },
+    "hats":  { "presence": [true,  true,  true,  true,  true,  true ] },
+    "perc":  { "presence": [false, false, true,  false, true,  false] },
+    "synth": { "presence": [false, true,  true,  true,  true,  false] },
+    "pad":   { "presence": [true,  true,  true,  true,  true,  true ] },
+    "fx":    { "presence": [true,  false, false, true,  false, true ] }
+  }
+}

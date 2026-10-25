@@ -1,0 +1,25 @@
+{
+  "id": "tech-house-groove",
+  "name": "Tech House Groove",
+  "genre": "Tech House",
+  "bpm_hint": 126,
+  "beats_per_bar": 4,
+  "description": "Tech House mit perkussivem Groove, zwei Drops und Filter-Break.",
+  "sections": [
+    { "id": "intro", "label": "Intro", "start_bar": 0, "length_bars": 16 },
+    { "id": "groove", "label": "Groove", "start_bar": 16, "length_bars": 16 },
+    { "id": "drop_a", "label": "Drop A", "start_bar": 32, "length_bars": 32 },
+    { "id": "break", "label": "Break", "start_bar": 64, "length_bars": 16 },
+    { "id": "drop_b", "label": "Drop B", "start_bar": 80, "length_bars": 32 },
+    { "id": "outro", "label": "Outro", "start_bar": 112, "length_bars": 16 }
+  ],
+  "roles": {
+    "kick":  { "presence": [true,  true,  true,  false, true,  true ] },
+    "bass":  { "presence": [false, true,  true,  false, true,  false] },
+    "hats":  { "presence": [true,  true,  true,  true,  true,  true ] },
+    "perc":  { "presence": [true,  true,  true,  true,  true,  false] },
+    "synth": { "presence": [false, false, true,  true,  true,  false] },
+    "pad":   { "presence": [false, false, false, true,  false, true ] },
+    "fx":    { "presence": [true,  true,  false, true,  false, true ] }
+  }
+}

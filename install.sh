@@ -1,31 +1,44 @@
 #!/usr/bin/env bash
-# Installiert den Ableton Reference Rebuilder (macOS, Live 11 Suite).
+# Installiert Loop Sketch (Max for Live) und optional den aelteren Reference Rebuilder.
 #
-#   ./install.sh               Engine (mit Demucs) + Remote Script + M4L-Device + Konfiguration
-#   ./install.sh --no-stems    ohne Demucs/PyTorch (schneller, grobe Stem-Trennung)
-#   ./install.sh --skip-engine nur Live-Dateien kopieren
-#   ./install.sh --uninstall   Live-Dateien und Konfiguration entfernen
+#   ./install.sh                      Loop Sketch Device + Remote Script + Templates
+#   ./install.sh --with-reference-rebuilder
+#                                     zusaetzlich Reference Rebuilder (ohne Engine)
+#   ./install.sh --with-engine        RR-Engine (Demucs) + RR Device/Script
+#   ./install.sh --no-stems           Engine ohne Demucs
+#   ./install.sh --skip-engine        Alias: nur Live-Dateien (wie Standard fuer Loop Sketch)
+#   ./install.sh --uninstall          Live-Dateien und Konfiguration entfernen
 #
-# Pfade lassen sich fuer Tests ueberschreiben: RR_USER_LIBRARY, RR_CONFIG_DIR.
+# Pfade: RR_USER_LIBRARY, RR_CONFIG_DIR, LS_CONFIG_DIR.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 USER_LIBRARY="${RR_USER_LIBRARY:-$HOME/Music/Ableton/User Library}"
-CONFIG_DIR="${RR_CONFIG_DIR:-$HOME/Library/Application Support/ReferenceRebuilder}"
-REMOTE_DIR="$USER_LIBRARY/Remote Scripts/ReferenceRebuilder"
-DEVICE_DIR="$USER_LIBRARY/Presets/Audio Effects/Max Audio Effect/Reference Rebuilder"
+RR_CONFIG_DIR="${RR_CONFIG_DIR:-$HOME/Library/Application Support/ReferenceRebuilder}"
+LS_CONFIG_DIR="${LS_CONFIG_DIR:-$HOME/Library/Application Support/LoopSketch}"
+
+LS_REMOTE_DIR="$USER_LIBRARY/Remote Scripts/LoopSketch"
+LS_DEVICE_DIR="$USER_LIBRARY/Presets/Audio Effects/Max Audio Effect/Loop Sketch"
+
+RR_REMOTE_DIR="$USER_LIBRARY/Remote Scripts/ReferenceRebuilder"
+RR_DEVICE_DIR="$USER_LIBRARY/Presets/Audio Effects/Max Audio Effect/Reference Rebuilder"
+
 ENGINE_PORT=47821
-REMOTE_PORT=47822
+RR_REMOTE_PORT=47822
+LS_REMOTE_PORT=47823
 
 WITH_STEMS=1
-SKIP_ENGINE=0
+WITH_ENGINE=0
+WITH_RR=0
 UNINSTALL=0
 for arg in "$@"; do
   case "$arg" in
     --no-stems) WITH_STEMS=0 ;;
-    --skip-engine) SKIP_ENGINE=1 ;;
+    --with-engine) WITH_ENGINE=1; WITH_RR=1 ;;
+    --with-reference-rebuilder) WITH_RR=1 ;;
+    --skip-engine) WITH_ENGINE=0 ;;
     --uninstall) UNINSTALL=1 ;;
-    -h|--help) sed -n '2,10p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,14p' "$0"; exit 0 ;;
     *) echo "Unbekannte Option: $arg" >&2; exit 2 ;;
   esac
 done
@@ -33,9 +46,10 @@ done
 say() { printf '\033[1m==> %s\033[0m\n' "$*"; }
 
 if [[ $UNINSTALL -eq 1 ]]; then
-  say "Entferne Remote Script, Device und Konfiguration"
-  rm -rf "$REMOTE_DIR" "$DEVICE_DIR" "$CONFIG_DIR"
-  echo "Fertig. Die Engine (Ordner engine/.venv) kannst du mit 'rm -rf $ROOT/engine/.venv' loeschen."
+  say "Entferne Loop Sketch / Reference Rebuilder Dateien"
+  rm -rf "$LS_REMOTE_DIR" "$LS_DEVICE_DIR" "$LS_CONFIG_DIR"
+  rm -rf "$RR_REMOTE_DIR" "$RR_DEVICE_DIR" "$RR_CONFIG_DIR"
+  echo "Fertig. Engine-venv optional: rm -rf $ROOT/engine/.venv"
   exit 0
 fi
 
@@ -49,7 +63,34 @@ if [[ ! -d "$USER_LIBRARY" ]]; then
   exit 1
 fi
 
-if [[ $SKIP_ENGINE -eq 0 ]]; then
+# --- Loop Sketch (immer) ---
+say "Kopiere Loop Sketch Remote Script nach $LS_REMOTE_DIR"
+rm -rf "$LS_REMOTE_DIR"
+mkdir -p "$LS_REMOTE_DIR"
+cp "$ROOT"/remote_script/LoopSketch/*.py "$LS_REMOTE_DIR/"
+
+say "Kopiere Loop Sketch Device nach $LS_DEVICE_DIR"
+mkdir -p "$LS_DEVICE_DIR"
+cp "$ROOT/m4l/LoopSketch/LoopSketch.amxd" "$ROOT/m4l/LoopSketch/LoopSketch.maxpat" "$LS_DEVICE_DIR/"
+cp "$ROOT/m4l/js/ls_node.js" "$ROOT/m4l/js/ls_core.js" "$ROOT/m4l/js/ls_orchestrator.js" \
+  "$ROOT/m4l/js/live_bridge.js" "$LS_DEVICE_DIR/"
+mkdir -p "$LS_DEVICE_DIR/templates"
+cp "$ROOT"/templates/*.json "$LS_DEVICE_DIR/templates/"
+
+say "Schreibe Loop Sketch Konfiguration nach $LS_CONFIG_DIR/config.json"
+mkdir -p "$LS_CONFIG_DIR"
+json_escape() { local s="${1//\\/\\\\}"; printf '%s' "${s//\"/\\\"}"; }
+cat >"$LS_CONFIG_DIR/config.json" <<EOF
+{
+  "product": "LoopSketch",
+  "remote_host": "127.0.0.1",
+  "remote_port": $LS_REMOTE_PORT,
+  "templates_dir": "$(json_escape "$LS_DEVICE_DIR/templates")"
+}
+EOF
+
+# --- Optional: Reference Rebuilder ---
+if [[ $WITH_ENGINE -eq 1 ]]; then
   export PATH="$HOME/.local/bin:$PATH"
   if ! command -v uv >/dev/null 2>&1; then
     say "Installiere uv (Python-Paketmanager)"
@@ -66,38 +107,47 @@ if [[ $SKIP_ENGINE -eq 0 ]]; then
     uv sync
   fi
   cd "$ROOT"
+  chmod +x "$ROOT/start-engine.sh"
 fi
 
-say "Kopiere Remote Script nach $REMOTE_DIR"
-rm -rf "$REMOTE_DIR"
-mkdir -p "$REMOTE_DIR"
-cp "$ROOT"/remote_script/ReferenceRebuilder/*.py "$REMOTE_DIR/"
+if [[ $WITH_RR -eq 1 ]]; then
+  say "Kopiere Reference Rebuilder Remote Script nach $RR_REMOTE_DIR"
+  rm -rf "$RR_REMOTE_DIR"
+  mkdir -p "$RR_REMOTE_DIR"
+  cp "$ROOT"/remote_script/ReferenceRebuilder/*.py "$RR_REMOTE_DIR/"
 
-say "Kopiere Max-for-Live-Device nach $DEVICE_DIR"
-mkdir -p "$DEVICE_DIR"
-cp "$ROOT/m4l/ReferenceRebuilder.amxd" "$ROOT/m4l/ReferenceRebuilder.maxpat" "$DEVICE_DIR/"
-# Abhaengigkeiten flach neben das Device: Max sucht im Ordner des Devices.
-cp "$ROOT"/m4l/js/*.js "$DEVICE_DIR/"
+  say "Kopiere Reference Rebuilder Device nach $RR_DEVICE_DIR"
+  mkdir -p "$RR_DEVICE_DIR"
+  cp "$ROOT/m4l/ReferenceRebuilder.amxd" "$ROOT/m4l/ReferenceRebuilder.maxpat" "$RR_DEVICE_DIR/"
+  cp "$ROOT"/m4l/js/*.js "$RR_DEVICE_DIR/"
 
-say "Schreibe Konfiguration nach $CONFIG_DIR/config.json"
-mkdir -p "$CONFIG_DIR"
-chmod +x "$ROOT/start-engine.sh"
-json_escape() { local s="${1//\\/\\\\}"; printf '%s' "${s//\"/\\\"}"; }
-cat >"$CONFIG_DIR/config.json" <<EOF
+  say "Schreibe RR-Konfiguration nach $RR_CONFIG_DIR/config.json"
+  mkdir -p "$RR_CONFIG_DIR"
+  cat >"$RR_CONFIG_DIR/config.json" <<EOF
 {
   "engine_url": "http://127.0.0.1:$ENGINE_PORT",
   "remote_host": "127.0.0.1",
-  "remote_port": $REMOTE_PORT,
+  "remote_port": $RR_REMOTE_PORT,
   "engine_start_command": ["$(json_escape "$ROOT/start-engine.sh")"],
   "separation": "auto"
 }
 EOF
+fi
 
 cat <<EOF
 
-Fertig. Naechste Schritte:
+Fertig (Loop Sketch). Naechste Schritte:
   1. Live 11 neu starten.
-  2. Einstellungen > Link/Tempo/MIDI > Control Surface: "ReferenceRebuilder" waehlen (Eingang/Ausgang: Keine).
-  3. Im Browser unter Max for Live / Audio Effects (bzw. User Library > Presets) "ReferenceRebuilder" auf eine Spur ziehen.
-  4. Die Engine startet das Device bei Bedarf selbst; manuell: $ROOT/start-engine.sh --foreground
+  2. Optional: Einstellungen > Link/Tempo/MIDI > Control Surface "LoopSketch"
+     (Eingang/Ausgang: Keine). To Arr braucht das Script nicht zwingend.
+  3. Im Browser: Max for Live / Audio Effects → "LoopSketch" auf eine Spur ziehen.
+  4. Template waehlen, Roles zuordnen, Session-Szene 1 mit Loops fuellen, **To Arr**.
 EOF
+
+if [[ $WITH_RR -eq 1 ]]; then
+  cat <<EOF
+
+Reference Rebuilder ebenfalls installiert.
+  Control Surface: "ReferenceRebuilder". Engine: $ROOT/start-engine.sh --foreground
+EOF
+fi

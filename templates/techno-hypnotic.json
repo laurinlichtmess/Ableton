@@ -1,0 +1,25 @@
+{
+  "id": "techno-hypnotic",
+  "name": "Techno Hypnotic",
+  "genre": "Techno",
+  "bpm_hint": 130,
+  "beats_per_bar": 4,
+  "description": "Hypnotisches Techno mit langen Abschnitten und spaetem Bass-Einstieg.",
+  "sections": [
+    { "id": "intro", "label": "Intro", "start_bar": 0, "length_bars": 32 },
+    { "id": "build", "label": "Build", "start_bar": 32, "length_bars": 16 },
+    { "id": "drop_a", "label": "Drop A", "start_bar": 48, "length_bars": 32 },
+    { "id": "break", "label": "Break", "start_bar": 80, "length_bars": 24 },
+    { "id": "drop_b", "label": "Drop B", "start_bar": 104, "length_bars": 32 },
+    { "id": "outro", "label": "Outro", "start_bar": 136, "length_bars": 16 }
+  ],
+  "roles": {
+    "kick":  { "presence": [true,  true,  true,  false, true,  true ] },
+    "bass":  { "presence": [false, false, true,  false, true,  false] },
+    "hats":  { "presence": [true,  true,  true,  true,  true,  true ] },
+    "perc":  { "presence": [false, true,  true,  false, true,  false] },
+    "synth": { "presence": [false, true,  true,  true,  true,  false] },
+    "pad":   { "presence": [true,  true,  false, true,  false, true ] },
+    "fx":    { "presence": [true,  false, false, true,  false, true ] }
+  }
+}

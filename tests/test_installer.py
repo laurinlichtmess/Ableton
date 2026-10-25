@@ -12,38 +12,71 @@ def run(args, env):
     return subprocess.run(["bash", str(ROOT / "install.sh"), *args], env=env, capture_output=True, text=True)
 
 
-def test_install_and_uninstall(tmp_path):
+def test_install_loop_sketch_default(tmp_path):
     lib = tmp_path / "User Library"
     lib.mkdir()
-    cfg = tmp_path / "Application Support" / "ReferenceRebuilder"
-    env = dict(os.environ, RR_USER_LIBRARY=str(lib), RR_CONFIG_DIR=str(cfg))
+    ls_cfg = tmp_path / "Application Support" / "LoopSketch"
+    rr_cfg = tmp_path / "Application Support" / "ReferenceRebuilder"
+    env = dict(
+        os.environ,
+        RR_USER_LIBRARY=str(lib),
+        LS_CONFIG_DIR=str(ls_cfg),
+        RR_CONFIG_DIR=str(rr_cfg),
+    )
 
-    res = run(["--skip-engine"], env)
-    assert res.returncode == 0, res.stderr
+    res = run([], env)
+    assert res.returncode == 0, res.stderr + res.stdout
 
-    remote = lib / "Remote Scripts" / "ReferenceRebuilder"
-    assert sorted(p.name for p in remote.iterdir()) == ["ReferenceRebuilder.py", "__init__.py", "commands.py", "server.py"]
-    device = lib / "Presets" / "Audio Effects" / "Max Audio Effect" / "Reference Rebuilder"
+    remote = lib / "Remote Scripts" / "LoopSketch"
+    assert sorted(p.name for p in remote.iterdir()) == [
+        "LoopSketch.py", "__init__.py", "commands.py", "server.py",
+    ]
+    device = lib / "Presets" / "Audio Effects" / "Max Audio Effect" / "Loop Sketch"
     names = {p.name for p in device.iterdir()}
-    assert {"ReferenceRebuilder.amxd", "rr_node.js", "live_bridge.js", "rr_core.js", "rr_orchestrator.js",
-            "rr_transport.js"} <= names
-    config = json.loads((cfg / "config.json").read_text())
-    assert config["engine_url"] == "http://127.0.0.1:47821" and config["remote_port"] == 47822
-    assert config["engine_start_command"] == [str(ROOT / "start-engine.sh")]
-    assert "Control Surface" in res.stdout
+    assert {"LoopSketch.amxd", "ls_node.js", "ls_core.js", "ls_orchestrator.js", "live_bridge.js"} <= names
+    assert (device / "templates" / "index.json").is_file()
+    assert len(list((device / "templates").glob("*.json"))) >= 7
 
-    # Erneut installieren ueberschreibt sauber.
-    (remote / "alt.py").write_text("x")
-    assert run(["--skip-engine"], env).returncode == 0
-    assert not (remote / "alt.py").exists()
+    config = json.loads((ls_cfg / "config.json").read_text())
+    assert config["product"] == "LoopSketch" and config["remote_port"] == 47823
+    assert "Loop Sketch" in res.stdout or "To Arr" in res.stdout
+
+    # RR nicht standardmaessig
+    assert not (lib / "Remote Scripts" / "ReferenceRebuilder").exists()
 
     assert run(["--uninstall"], env).returncode == 0
-    assert not remote.exists() and not device.exists() and not cfg.exists()
+    assert not remote.exists() and not device.exists() and not ls_cfg.exists()
+
+
+def test_install_with_reference_rebuilder(tmp_path):
+    lib = tmp_path / "User Library"
+    lib.mkdir()
+    ls_cfg = tmp_path / "Application Support" / "LoopSketch"
+    rr_cfg = tmp_path / "Application Support" / "ReferenceRebuilder"
+    env = dict(
+        os.environ,
+        RR_USER_LIBRARY=str(lib),
+        LS_CONFIG_DIR=str(ls_cfg),
+        RR_CONFIG_DIR=str(rr_cfg),
+    )
+    res = run(["--with-reference-rebuilder"], env)
+    assert res.returncode == 0, res.stderr
+    assert (lib / "Remote Scripts" / "LoopSketch").is_dir()
+    assert (lib / "Remote Scripts" / "ReferenceRebuilder").is_dir()
+    rr_device = lib / "Presets" / "Audio Effects" / "Max Audio Effect" / "Reference Rebuilder"
+    assert (rr_device / "ReferenceRebuilder.amxd").is_file()
+    config = json.loads((rr_cfg / "config.json").read_text())
+    assert config["remote_port"] == 47822
 
 
 def test_missing_user_library_and_bad_option(tmp_path):
-    env = dict(os.environ, RR_USER_LIBRARY=str(tmp_path / "fehlt"), RR_CONFIG_DIR=str(tmp_path / "cfg"))
-    res = run(["--skip-engine"], env)
+    env = dict(
+        os.environ,
+        RR_USER_LIBRARY=str(tmp_path / "fehlt"),
+        LS_CONFIG_DIR=str(tmp_path / "ls"),
+        RR_CONFIG_DIR=str(tmp_path / "cfg"),
+    )
+    res = run([], env)
     assert res.returncode == 1 and "User Library" in res.stderr
     assert run(["--bogus"], env).returncode == 2
 

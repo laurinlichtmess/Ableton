@@ -7,9 +7,10 @@
 // Operationen:
 //   ping                                   -> {live_version}
 //   get_state                              -> {tempo, signature_numerator, signature_denominator, scene_count,
-//                                              tracks:[{index,name,has_midi_input,is_foldable,devices,source_loop}],
+//                                              tracks:[{index,name,has_midi_input,is_foldable,devices,source_loop,scene1_clip}],
 //                                              cue_points:[{time,name}]}
 //                                              source_loop: erster Session- oder Arrangement-Loop (~8 Takte) oder null
+//                                              scene1_clip: Session-Slot 0 (Loop Sketch To Arr) oder null
 //   set_tempo {tempo}
 //   set_locator {time, name}               -> {created, name_ok}
 //   create_scene                           -> {scene_index}
@@ -274,6 +275,20 @@ function clipLoopInfo(clip, kind, index) {
 	};
 }
 
+// Session-Szene 1 (Slot-Index 0) — Quelle fuer Loop Sketch / To Arr.
+function findScene1Clip(trackIndex) {
+	var t = api(trackPath(trackIndex), "track");
+	if (t.getcount("clip_slots") < 1) {
+		return null;
+	}
+	var slot = api(slotPath(trackIndex, 0), "slot");
+	if (num(slot, "has_clip") !== 1) {
+		return null;
+	}
+	var clip = api(slotPath(trackIndex, 0) + " clip", "clip");
+	return clipLoopInfo(clip, "session", 0);
+}
+
 // Erster brauchbarer Loop: Session-Slots von vorne, sonst Arrangement-Clips nahe Beat 0.
 function findSourceLoop(trackIndex) {
 	var best = null;
@@ -313,6 +328,23 @@ function findSourceLoop(trackIndex) {
 		}
 	}
 	return best;
+}
+
+function clipInfoPayload(src) {
+	if (!src) {
+		return null;
+	}
+	return {
+		kind: src.kind,
+		index: src.index,
+		length: src.length,
+		color_index: src.color_index,
+		name: src.name,
+		looping: src.looping,
+		loop_start: src.loop_start,
+		loop_end: src.loop_end,
+		note_count: src.note_count
+	};
 }
 
 function sourceClipApi(trackIndex, kind, index) {
@@ -402,7 +434,8 @@ var HANDLERS = {
 				has_midi_input: num(t, "has_midi_input") === 1,
 				is_foldable: num(t, "is_foldable") === 1,
 				devices: [],
-				source_loop: null
+				source_loop: null,
+				scene1_clip: null
 			};
 			var nd = t.getcount("devices");
 			for (var j = 0; j < nd; j++) {
@@ -410,20 +443,8 @@ var HANDLERS = {
 				info.devices.push({ index: j, name: str(d, "name"), class_name: str(d, "class_name") });
 			}
 			if (!info.is_foldable) {
-				var src = findSourceLoop(i);
-				if (src) {
-					info.source_loop = {
-						kind: src.kind,
-						index: src.index,
-						length: src.length,
-						color_index: src.color_index,
-						name: src.name,
-						looping: src.looping,
-						loop_start: src.loop_start,
-						loop_end: src.loop_end,
-						note_count: src.note_count
-					};
-				}
+				info.scene1_clip = clipInfoPayload(findScene1Clip(i));
+				info.source_loop = clipInfoPayload(findSourceLoop(i));
 			}
 			tracks.push(info);
 		}
