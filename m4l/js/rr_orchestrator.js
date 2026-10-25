@@ -152,6 +152,7 @@ Orchestrator.prototype._remote = function (report, msg) {
 Orchestrator.prototype._insertMissingDevices = function (plan, report) {
   var self = this;
   var d = self.deps;
+  report._inserted = report._inserted || [];
   var missing = plan.devices.filter(function (dev) { return !dev.present; });
   return missing.reduce(function (p, dev) {
     return p.then(function () {
@@ -164,12 +165,48 @@ Orchestrator.prototype._insertMissingDevices = function (plan, report) {
           self.state = state;
           if (core.findDevice(core.trackByIndex(state, dev.track), dev.class_name)) {
             report.devices_inserted.push(dev.device + " -> " + track.name);
+            report._inserted.push({ track: dev.track, class_name: dev.class_name, device: dev.device });
           } else {
             report.warnings.push(dev.device + " wurde auf '" + track.name + "' nicht gefunden.");
           }
         }, function (err) {
           report.warnings.push(dev.device + " nicht eingefuegt: " + message(err));
         });
+    });
+  }, Promise.resolve());
+};
+
+// Geraete wieder entfernen, wenn keine Envelope geschrieben werden kann (kein Orphan-FX).
+Orchestrator.prototype._pruneOrphanDevices = function (plan, targets, report) {
+  var self = this;
+  var d = self.deps;
+  var needed = {};
+  plan.tracks.forEach(function (t) {
+    t.clips.forEach(function (c) {
+      c.envelopes = (c.envelopes || []).filter(function (e) {
+        var key = t.track + "|" + e.class_name + "|" + e.parameter;
+        return !!targets[key] && core.stepsHaveMotion(e.target, e.steps);
+      });
+      c.envelopes.forEach(function (e) {
+        needed[t.track + "|" + e.class_name] = true;
+      });
+    });
+  });
+  var inserted = report._inserted || [];
+  return inserted.reduce(function (p, ins) {
+    return p.then(function () {
+      if (needed[ins.track + "|" + ins.class_name]) return null;
+      var track = core.trackByIndex(self.state, ins.track);
+      report.warnings.push(ins.device + " auf '" + (track ? track.name : "?") +
+        "' wieder entfernt (keine schreibbare Automation).");
+      return attempt(report, "Entferne " + ins.device, function () {
+        return d.lom({ op: "delete_device", track: ins.track, class_name: ins.class_name });
+      }).then(function () {
+        report.devices_inserted = report.devices_inserted.filter(function (s) {
+          return s.indexOf(ins.device + " -> ") !== 0;
+        });
+        return d.lom({ op: "get_state" }).then(function (state) { self.state = state; });
+      });
     });
   }, Promise.resolve());
 };
@@ -245,23 +282,34 @@ Orchestrator.prototype.apply = function () {
         });
       }, Promise.resolve());
     }).then(function () {
-      if (self.options.apply_automation) return self._insertMissingDevices(plan, report);
+      if (self.options.apply_automation && plan.devices.length) {
+        return self._insertMissingDevices(plan, report);
+      }
     }).then(function () {
       return self._resolveTargets(plan, report);
     }).then(function (targets) {
+      return self._pruneOrphanDevices(plan, targets, report).then(function () { return targets; });
+    }).then(function (targets) {
       if (!plan.tracks.length) return null;
-      return attempt(report, "Hilfs-Szene", function () {
-        return d.lom({ op: "create_scene" }).then(function (res) {
-          scene = res.scene_index;
-          return plan.tracks.reduce(function (p, t) {
-            return t.clips.reduce(function (p2, c) {
-              return p2.then(function () {
-                self.status("Clip '" + c.name + "' auf '" + t.name + "' ...");
-                return self._buildClip(t, c, scene, targets, report);
-              });
-            }, p);
-          }, Promise.resolve());
+      var needsHelper = plan.tracks.some(function (t) {
+        return t.can_automate && (t.clips || []).some(function (c) {
+          return (c.envelopes || []).length > 0;
         });
+      });
+      var start = needsHelper
+        ? attempt(report, "Hilfs-Szene", function () {
+          return d.lom({ op: "create_scene" }).then(function (res) { scene = res.scene_index; });
+        })
+        : Promise.resolve();
+      return start.then(function () {
+        return plan.tracks.reduce(function (p, t) {
+          return t.clips.reduce(function (p2, c) {
+            return p2.then(function () {
+              self.status("Loop '" + c.name + "' auf '" + t.name + "' ...");
+              return self._buildClip(t, c, scene, targets, report);
+            });
+          }, p);
+        }, Promise.resolve());
       });
     }).then(function () {
       return self._finish(scene, report);
@@ -285,30 +333,65 @@ Orchestrator.prototype._writeEnvelope = function (report, t, scene, target, step
   }, Promise.resolve());
 };
 
+// Vorhandenen Loop der Spur an die Abschnittsposition legen (Inhalt + Farbe), optional mit Automation.
+// Reihenfolge bei Automation: kopieren -> auf Abschnittslaenge strecken -> Envelopes -> Arrangement.
 Orchestrator.prototype._buildClip = function (t, c, scene, targets, report) {
   var self = this;
   var d = self.deps;
-  var label = "Clip '" + c.name + "' auf '" + t.name + "'";
-  return d.lom({ op: "create_clip", track: t.track, scene: scene, length: c.length, name: c.name,
-    color_index: c.color_index }).then(function () {
-    return c.envelopes.reduce(function (p, e) {
-      var target = targets[t.track + "|" + e.class_name + "|" + e.parameter];
-      if (!target) return p;
-      var steps = e.steps.map(function (s) { return [s[0], s[1], target.toRaw(s[2])]; });
-      return p.then(function () {
-        if (report.remote_down) return null;
-        return attempt(report, label + ", Automation " + e.device + "/" + e.parameter, function () {
-          return self._writeEnvelope(report, t, scene, target, steps).then(function () { report.envelopes++; });
-        });
+  var label = "Loop '" + c.name + "' auf '" + t.name + "'";
+  var source = t.source_loop;
+  if (!source || c.source_kind == null) {
+    report.warnings.push(label + ": kein Quell-Loop.");
+    return Promise.resolve();
+  }
+  var envs = (c.envelopes || []).filter(function (e) {
+    var target = targets[t.track + "|" + e.class_name + "|" + e.parameter];
+    return !!target && core.stepsHaveMotion(e.target, e.steps);
+  });
+  var useHelper = envs.length > 0 && t.can_automate && scene !== null && scene !== undefined;
+
+  var place = useHelper
+    ? d.lom({
+      op: "copy_clip_to_slot", track: t.track, source_kind: source.kind,
+      source_index: source.index, dest_scene: scene,
+    }).then(function () {
+      return d.lom({
+        op: "stretch_session_clip", track: t.track, scene: scene, length: c.length,
+        color_index: c.color_index, name: c.name,
       });
-    }, Promise.resolve()).then(function () {
+    }).then(function (stretched) {
+      if (stretched && stretched.note_count === 0) {
+        throw new Error("Hilfsclip hat keine MIDI-Noten (Quelle pruefen)");
+      }
+      return envs.reduce(function (p, e) {
+        var target = targets[t.track + "|" + e.class_name + "|" + e.parameter];
+        var steps = e.steps.map(function (s) { return [s[0], s[1], target.toRaw(s[2])]; });
+        return p.then(function () {
+          if (report.remote_down) return null;
+          return attempt(report, label + ", Automation " + e.device + "/" + e.parameter, function () {
+            return self._writeEnvelope(report, t, scene, target, steps).then(function () { report.envelopes++; });
+          });
+        });
+      }, Promise.resolve());
+    }).then(function () {
       return d.lom({ op: "duplicate_to_arrangement", track: t.track, scene: scene, time: c.start });
     }).then(function () {
-      report.clips++;
+      return d.lom({
+        op: "stretch_arrangement_clip", track: t.track, time: c.start, length: c.length,
+        color_index: c.color_index, name: c.name,
+      });
+    })
+    : d.lom({
+      op: "place_loop", track: t.track, source_kind: source.kind, source_index: source.index,
+      time: c.start, length: c.length, name: c.name, color_index: c.color_index,
     });
+
+  return place.then(function () {
+    report.clips++;
   }).catch(function (err) {
     report.warnings.push(label + ": " + message(err));
   }).then(function () {
+    if (!useHelper) return null;
     return attempt(report, label + " (Aufraeumen)", function () {
       return d.lom({ op: "delete_clip", track: t.track, scene: scene });
     });
@@ -333,9 +416,9 @@ Orchestrator.prototype._finish = function (scene, report) {
     self.status(text);
     var summary = core.formatSummary(self.analysis, self.mapping(), self.state);
     if (report.clips > 0) {
-      summary += "\n\nHinweis: Die MIDI-Clips sind absichtlich leer (kein Noteninhalt) – sie tragen " +
-        "das Songteil-Geruest. Automationen liegen nach dem Duplizieren in den Arrangement-Automationsspuren " +
-        "(Spur oeffnen / Automation einblenden), nicht als Noten im Clip.";
+      summary += "\n\nHinweis: Dein ~8-Takt-Loop ist ueber die volle Referenzlaenge gekachelt (Noten/Audio + Farbe " +
+        "wie das Original). Presence-Stille nur optional. Auto Filter/Utility nur wenn Automation wirklich " +
+        "geschrieben wurde.";
     }
     if (report.warnings.length) summary += "\n\nHinweise beim Anwenden:\n  " + report.warnings.join("\n  ");
     self.deps.ui.summary(summary);

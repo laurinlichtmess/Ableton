@@ -1,12 +1,15 @@
 # Ableton Reference Rebuilder (Live 11 Suite, macOS)
 
-Ein Max-for-Live-Device, das eine Referenz-MP3 analysiert und daraus im aktuellen Live-Set das
-**Arrangement-Gerüst** (Tempo, benannte Locators, Clips pro Songteil) und **Automationen**
-(Filter-Cutoff über Auto Filter, Lautstärke-Fades über Utility) nachbaut. Fehlende Effekte und die
-Clip-Automation erledigt ein kleines **Companion Remote Script**, weil Max for Live in Live 11 weder Geräte
-einfügen noch Clip-Envelopes anlegen kann (`Clip.automation_envelope` gibt es nur in der Python-API).
+Ein Max-for-Live-Device, das eine Referenz-MP3 analysiert und daraus im aktuellen Live-Set ein
+**spielbares Arrangement in voller Referenzlänge** baut: Tempo, benannte Locators, und den
+**~8-Takt-Loop** jeder zugeordneten Spur (Session- oder Arrangement-Clip am Spuranfang) **über die
+gesamte Tracklänge gekachelt** – **MIDI-Noten und Farbe des Original-Loops bleiben**. Zusätzlich
+optional **Automationen** (Filter-Cutoff / Utility-Gain). Fehlende Effekte und Clip-Envelopes erledigt
+ein kleines **Companion Remote Script**, weil Max for Live in Live 11 weder Geräte einfügen noch
+Clip-Envelopes anlegen kann (`Clip.automation_envelope` gibt es nur in der Python-API).
 
-Nachgebaut werden nur Struktur, Automation und Effekt-Vorschläge – keine Noten und keine Sounds.
+Es werden **keine leeren MIDI-Clips** erzeugt und keine neuen Sounds erfunden – nur deine Loops,
+wiederholt bis zur Referenzdauer (auch wenn die MP3-Analyse dünn oder falsch ist).
 
 ```mermaid
 flowchart LR
@@ -74,28 +77,37 @@ Liegt deine User Library woanders (Live: *Einstellungen › Library*), so:
    (Kick, Bass, Clap/Snare, Hats, Ride, Perc, Atmo/Pads, Synth/Lead, Vocals) und lässt sich pro Element
    im Menü ändern („Keine“ = ignorieren). **Spuren** aktualisiert die Liste.
 5. Optionen:
-   - **Arrangement anlegen**: Locators an jedem Songteil, Clips pro Songteil auf den zugeordneten Spuren
-     (nur dort, wo der Stem in der Referenz spielt)
-   - **Automation/Effekte**: fehlende Auto Filter/Utility einfügen und Kurven als Clip-Envelopes schreiben
+   - **Arrangement anlegen**: Locators + deine Loops über die **volle Referenzlänge** kacheln
+     (Presence-Stille nur optional; bei dünner Analyse trotzdem durchgehend spielbar)
+   - **Automation/Effekte**: fehlende Auto Filter/Utility einfügen und Kurven schreiben
    - **Tempo übernehmen**: Song-Tempo auf das erkannte Tempo setzen
-6. **Anwenden** klicken. Die Statuszeile meldet am Ende, was angelegt wurde; Hinweise (z. B. Audiospuren)
-   stehen im Textfeld. Schlägt ein einzelner Schritt fehl (ein Locator, ein Clip, eine Automation), läuft
-   Anwenden weiter und der Fehler steht unter „Hinweise beim Anwenden“.
+6. **Anwenden** klicken. Die Statuszeile meldet am Ende, was angelegt wurde; Hinweise (z. B. Spur ohne
+   Loop am Anfang) stehen im Textfeld. Schlägt ein einzelner Schritt fehl, läuft Anwenden weiter
+   („Hinweise beim Anwenden“).
 
 **Tipp:** Vorher das Set speichern bzw. eine Kopie anlegen. Jede Änderung ist ein eigener Undo-Schritt.
+Pro Spur sollte am Anfang ein brauchbarer Loop liegen (Session-Slot oder Arrangement-Clip bei Takt 1,
+typisch 1–8 Takte) – den nutzt Anwenden als Quelle.
 
 ### Was im Set passiert
 
 - **Tempo** wird gesetzt, **Locators** werden an den Songteil-Anfängen gesetzt und benannt (Beat 0 = erster
   erkannter Taktanfang der Referenz; die Referenz-Audiodatei ggf. um `first_downbeat_sec` nach links schieben).
   Ein bereits vorhandener Locator an derselben Position wird nur umbenannt.
-- Für jede zugeordnete **MIDI-Spur** wird eine temporäre Szene angelegt, darin pro Songteil ein leerer
-  MIDI-Clip in Songteil-Länge (benannt und nach Abschnittsgruppe eingefärbt). Die Clip-Envelopes für
-  *Auto Filter › Frequency* bzw. *Utility › Gain* schreibt das Remote Script (`write_envelope`). Der Clip wird
-  mit `duplicate_clip_to_arrangement` an die richtige Stelle im Arrangement kopiert; die temporäre Szene wird
-  danach wieder gelöscht. Ohne aktives Remote Script entstehen Locators und Clips trotzdem, nur ohne Automation.
-- **Effekte**: Ist auf der Spur noch kein Auto Filter (`AutoFilter`) bzw. Utility (`StereoGain`), lädt das
-  Remote Script ihn ans Ende der Geräte-Kette.
+- Für jede zugeordnete Spur mit erkanntem **Quell-Loop** wird dieser Clip **über die volle
+  Referenzlänge gekachelt** (Dauer aus Analyse: Abschnittsende / `duration_sec`×BPM / `num_bars`,
+  das Maximum), behält **Noten und Farbe des Originals**. Presence-basierte Stille ist optional und
+  greift nur bei belastbarer Presence; sonst durchgehende Kachelung. MIDI- und Audiospuren
+  funktionieren, solange ein Loop existiert. Fehlt der Loop, erscheint ein Hinweis und die Spur
+  bekommt keine Arrangement-Clips.
+- **Automation** (optional): Nur bei **hörbarer** Kurve (nicht flach/neutral). Session-Loop oder
+  Arrangement-**MIDI** wird in eine Hilfs-Szene materialisiert (Session: `duplicate_clip_to`; Arrangement-MIDI:
+  `create_clip` + Noten kopieren), Envelopes schreibt das Remote Script (`write_envelope`), dann
+  `duplicate_clip_to_arrangement`. Arrangement-**Audio** ohne Session-Loop: Clips ja, Utility/Filter
+  übersprungen (Hinweis im Textfeld). Ohne Remote Script: Loops/Locators trotzdem, ohne Kurven.
+- **Effekte**: Auto Filter / Utility nur, wenn danach wirklich Envelopes geschrieben werden. Schlägt das
+  Schreiben fehl oder die Kurve ist leer/neutral, wird ein gerade eingefügtes Gerät wieder entfernt
+  (kein Orphan-FX).
 - Hz/dB werden über `str_for_value` des jeweiligen Parameters in Live-Rohwerte umgerechnet, damit die Kurven
   unabhängig von der internen Skalierung stimmen.
 

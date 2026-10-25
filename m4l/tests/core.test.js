@@ -4,14 +4,17 @@ var assert = require("node:assert/strict");
 var core = require("../js/rr_core");
 var analysis = require("./fixtures/analysis.json");
 
+function loop(color) {
+  return { kind: "session", index: 0, length: 32, color_index: color, name: "loop", looping: true, loop_start: 0, loop_end: 32 };
+}
 var TRACKS = [
-  { index: 0, name: "Kick", has_midi_input: true, is_foldable: false, devices: [] },
-  { index: 1, name: "Bass", has_midi_input: true, is_foldable: false, devices: [] },
-  { index: 2, name: "Clap", has_midi_input: true, is_foldable: false, devices: [] },
-  { index: 3, name: "Group Synths", has_midi_input: true, is_foldable: true, devices: [] },
-  { index: 4, name: "Lead Synth", has_midi_input: true, is_foldable: false, devices: [{ index: 0, name: "Auto Filter", class_name: "AutoFilter" }] },
-  { index: 5, name: "Atmo Pads", has_midi_input: true, is_foldable: false, devices: [] },
-  { index: 6, name: "Lead Vox", has_midi_input: false, is_foldable: false, devices: [] },
+  { index: 0, name: "Kick", has_midi_input: true, is_foldable: false, devices: [], source_loop: loop(69) },
+  { index: 1, name: "Bass", has_midi_input: true, is_foldable: false, devices: [], source_loop: loop(26) },
+  { index: 2, name: "Clap", has_midi_input: true, is_foldable: false, devices: [], source_loop: loop(63) },
+  { index: 3, name: "Group Synths", has_midi_input: true, is_foldable: true, devices: [], source_loop: null },
+  { index: 4, name: "Lead Synth", has_midi_input: true, is_foldable: false, devices: [{ index: 0, name: "Auto Filter", class_name: "AutoFilter" }], source_loop: loop(14) },
+  { index: 5, name: "Atmo Pads", has_midi_input: true, is_foldable: false, devices: [], source_loop: loop(20) },
+  { index: 6, name: "Lead Vox", has_midi_input: false, is_foldable: false, devices: [], source_loop: loop(8) },
 ];
 
 test("toPosixPath wandelt Max-Pfade um", function () {
@@ -104,46 +107,107 @@ test("findParam: exakter Name vor Praefix", function () {
   assert.equal(core.findParam(params, "Gain"), null);
 });
 
-test("buildPlan mit echter Engine-Analyse (feine Elemente)", function () {
+test("referenceLengthBeats nimmt das Maximum aus Abschnitten/Dauer/Takten", function () {
+  var len = core.referenceLengthBeats(analysis);
+  var last = analysis.sections[analysis.sections.length - 1];
+  var sectionEnd = last.start_beat + last.length_beats;
+  var fromDur = analysis.source.duration_sec * analysis.tempo.bpm / 60;
+  var fromBars = analysis.tempo.num_bars * 4;
+  assert.ok(Math.abs(len - Math.max(sectionEnd, fromDur, fromBars)) < 0.02);
+  assert.ok(len >= sectionEnd - 1e-6);
+});
+
+test("buildPlan kachelt Loops ueber die volle Referenzlaenge", function () {
   var state = { tracks: TRACKS };
   var mapping = { kick: 0, bass: 1, synth: 4, atmo: 5 };
   var plan = core.buildPlan(analysis, state, {}, mapping);
+  var refLen = core.referenceLengthBeats(analysis);
   assert.equal(plan.tempo, analysis.tempo.bpm);
+  assert.equal(plan.reference_length_beats, refLen);
   assert.deepEqual(plan.locators.map(function (l) { return l.name; }), analysis.sections.map(function (s) { return s.label; }));
   assert.deepEqual(plan.locators[1], { time: analysis.sections[1].start_beat, name: analysis.sections[1].label });
 
+  assert.equal(plan.tracks.length, 4, "alle gemappten Spuren mit Loop bekommen Clips");
+  plan.tracks.forEach(function (t) {
+    assert.ok(t.clips.length >= 2, t.stem + " braucht mehrere Kacheln, nicht nur 1–2 Abschnitte");
+    assert.ok(Math.abs(t.coverage_beats - refLen) < 0.05, t.stem + " deckt volle Laenge ab");
+    assert.equal(t.carved, false, "Default ohne Presence-Carve");
+    assert.equal(t.clips[0].color_index, t.source_loop.color_index);
+    assert.equal(t.clips[0].source_kind, "session");
+    var covered = t.clips.reduce(function (s, c) { return s + c.length; }, 0);
+    assert.ok(Math.abs(covered - refLen) < 0.05);
+  });
+
   var synth = plan.tracks.find(function (t) { return t.stem === "synth"; });
   assert.ok(synth, "Synth-Spur im Plan");
-  var synthStem = analysis.stems.find(function (s) { return s.name === "synth"; });
-  var activeCount = synthStem.active_sections.filter(Boolean).length;
-  assert.ok(synth.clips.length >= activeCount, "Clips fuer aktive Teile (+ ggf. Automations-Ueberhang)");
   var build = synth.clips.find(function (c) { return c.name === "Build"; });
-  if (build) {
-    var env = build.envelopes.find(function (e) { return e.target === "filter_cutoff"; });
-    if (env) {
-      assert.ok(env.steps.length > 1, "Sweep braucht mehrere Schritte");
-      var total = env.steps.reduce(function (s, x) { return s + x[1]; }, 0);
-      assert.ok(Math.abs(total - build.length) < 1e-6);
-    }
-  }
+  assert.ok(build, "Build-Kachel geplant");
+  assert.equal(build.color_index, 14, "Farbe vom Quell-Loop");
+  var env = build.envelopes.find(function (e) { return e.target === "filter_cutoff"; });
+  assert.ok(env && env.steps.length > 1, "Sweep braucht mehrere Schritte");
+  var total = env.steps.reduce(function (s, x) { return s + x[1]; }, 0);
+  assert.ok(Math.abs(total - build.length) < 1e-6);
   assert.ok(plan.devices.some(function (d) { return d.track === 4 && d.class_name === "AutoFilter"; }));
   var stats = core.planStats(plan);
   assert.equal(stats.locators, analysis.sections.length);
-  assert.ok(stats.clips > 0);
+  assert.ok(stats.clips >= 4 * Math.floor(refLen / 32), "viele Kacheln statt ~3 Clips gesamt");
 });
 
-test("buildPlan: nur Automation -> nur nicht-neutrale Abschnitte; Audiospuren werden gemeldet", function () {
+test("buildPlan: dünne/fehlende Presence → trotzdem volle Kachelung", function () {
+  var sparse = JSON.parse(JSON.stringify(analysis));
+  sparse.stems.forEach(function (s) {
+    s.active_sections = s.active_sections.map(function (_, i) { return i === 2; });
+    s.presence_bars = s.presence_bars.map(function () { return false; });
+    s.presence_bars[16] = true;
+  });
+  var plan = core.buildPlan(sparse, { tracks: TRACKS }, {}, { kick: 0, synth: 4 });
+  var refLen = core.referenceLengthBeats(sparse);
+  plan.tracks.forEach(function (t) {
+    assert.ok(Math.abs(t.coverage_beats - refLen) < 0.05, t.stem + " Fallback volle Laenge");
+  });
+  // Explizite Carve-outs bei brauchbarer Presence sparren Stille, bleiben aber spielbar.
+  var carved = core.buildPlan(analysis, { tracks: TRACKS }, { presence_carve_outs: true }, { kick: 0 });
+  var kick = carved.tracks.find(function (t) { return t.stem === "kick"; });
+  assert.ok(kick && kick.clips.length >= 1);
+  assert.ok(kick.coverage_beats > 16, "Carve laesst Spur nicht fast leer");
+});
+
+test("buildPlan: ohne Arrangement-Option keine Clips; fehlender Loop wird gemeldet", function () {
   var state = { tracks: TRACKS };
   var plan = core.buildPlan(analysis, state, { build_arrangement: false }, { synth: 4, bass: 6 });
   assert.equal(plan.locators.length, 0);
   assert.equal(plan.tempo, null);
-  var synth = plan.tracks.find(function (t) { return t.stem === "synth"; });
-  assert.ok(synth.clips.length >= 1 && synth.clips.length < analysis.sections.length);
-  assert.ok(synth.clips.every(function (c) {
-    return c.envelopes.some(function (e) { return !core.isNeutral(e.target, e.steps); });
-  }));
-  assert.ok(!plan.tracks.some(function (t) { return t.track === 6; }));
-  assert.ok(plan.warnings.some(function (w) { return w.indexOf("Audiospur") !== -1; }));
+  assert.equal(plan.tracks.length, 0);
+  // Ohne Arrangement-Clips keine Envelopes → keine Geraete (kein Orphan-FX).
+  assert.equal(plan.devices.length, 0);
+  var noLoop = JSON.parse(JSON.stringify(TRACKS));
+  noLoop[0].source_loop = null;
+  var plan2 = core.buildPlan(analysis, { tracks: noLoop }, {}, { kick: 0 });
+  assert.ok(plan2.warnings.some(function (w) { return /kein Loop/.test(w); }));
+  assert.ok(!plan2.tracks.some(function (t) { return t.stem === "kick"; }));
+});
+
+test("buildPlan: flache Automation plant kein Filter/Utility", function () {
+  var flat = JSON.parse(JSON.stringify(analysis));
+  var synth = flat.stems.find(function (s) { return s.name === "synth"; });
+  synth.automation = [{
+    target: "filter_cutoff", device: "Auto Filter", class_name: "AutoFilter",
+    parameter: "Frequency", unit: "Hz",
+    points: [{ beat: 0, value: 20000 }, { beat: 64, value: 20000 }],
+  }];
+  var kick = flat.stems.find(function (s) { return s.name === "kick"; });
+  kick.automation = [{
+    target: "gain", device: "Utility", class_name: "StereoGain",
+    parameter: "Gain", unit: "dB",
+    points: [{ beat: 0, value: 0 }, { beat: 64, value: 0 }],
+  }];
+  var plan = core.buildPlan(flat, { tracks: TRACKS }, {}, { kick: 0, synth: 4 });
+  assert.equal(plan.devices.length, 0);
+  plan.tracks.forEach(function (t) {
+    t.clips.forEach(function (c) { assert.equal(c.envelopes.length, 0); });
+  });
+  assert.ok(core.pointsHaveMotion("filter_cutoff", [{ beat: 0, value: 400 }, { beat: 32, value: 8000 }]));
+  assert.ok(!core.pointsHaveMotion("filter_cutoff", [{ beat: 0, value: 20000 }, { beat: 32, value: 20000 }]));
 });
 
 test("buildPlan: ohne Automation werden keine Geraete geplant", function () {
@@ -157,11 +221,13 @@ test("formatSummary enthaelt Songteile, Zuordnung und Vorschlaege", function () 
   assert.ok(text.indexOf("Tempo 128") === 0);
   assert.ok(text.indexOf("Build") !== -1);
   assert.ok(text.indexOf("Kick -> 1: Kick") !== -1);
+  assert.ok(text.indexOf("[Loop session") !== -1);
   assert.ok(text.indexOf("Synth -> -") !== -1);
   var silent = JSON.parse(JSON.stringify(analysis));
   var vox = silent.stems.find(function (s) { return s.name === "vocals"; });
   if (vox) vox.present = false;
-  assert.ok(core.formatSummary(silent, { vocals: 6 }, { tracks: TRACKS }).indexOf("Vocals -> 7: Lead Vox (stumm)") !== -1);
+  assert.ok(core.formatSummary(silent, { vocals: 6 }, { tracks: TRACKS }).indexOf("Vocals -> 7: Lead Vox") !== -1);
+  assert.ok(core.formatSummary(silent, { vocals: 6 }, { tracks: TRACKS }).indexOf("(stumm)") !== -1);
 });
 
 test("STEMS enthaelt die feinen Live-Track-Namen", function () {
