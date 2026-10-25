@@ -1,0 +1,196 @@
+{
+  "bpm": 128,
+  "sections": [
+    [
+      "Intro",
+      0,
+      8
+    ],
+    [
+      "Build",
+      8,
+      16
+    ],
+    [
+      "Drop 1",
+      16,
+      24
+    ],
+    [
+      "Breakdown",
+      24,
+      32
+    ],
+    [
+      "Drop 2",
+      32,
+      40
+    ],
+    [
+      "Outro",
+      40,
+      49
+    ]
+  ],
+  "separation": "bands",
+  "stems": {
+    "kick": {
+      "present": true,
+      "active_sections": [
+        false,
+        false,
+        true,
+        false,
+        true,
+        true
+      ],
+      "automation": [
+        "gain"
+      ]
+    },
+    "bass": {
+      "present": true,
+      "active_sections": [
+        false,
+        false,
+        true,
+        false,
+        true,
+        true
+      ],
+      "automation": [
+        "gain"
+      ]
+    },
+    "clap": {
+      "present": false,
+      "active_sections": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "automation": []
+    },
+    "hats": {
+      "present": true,
+      "active_sections": [
+        true,
+        true,
+        true,
+        false,
+        true,
+        true
+      ],
+      "automation": [
+        "gain"
+      ]
+    },
+    "ride": {
+      "present": true,
+      "active_sections": [
+        false,
+        true,
+        true,
+        false,
+        true,
+        false
+      ],
+      "automation": [
+        "gain"
+      ]
+    },
+    "perc": {
+      "present": true,
+      "active_sections": [
+        false,
+        true,
+        true,
+        false,
+        true,
+        false
+      ],
+      "automation": [
+        "gain"
+      ]
+    },
+    "atmo": {
+      "present": true,
+      "active_sections": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        false
+      ],
+      "automation": [
+        "filter_cutoff"
+      ]
+    },
+    "synth": {
+      "present": true,
+      "active_sections": [
+        false,
+        true,
+        true,
+        false,
+        true,
+        false
+      ],
+      "automation": [
+        "filter_cutoff"
+      ]
+    },
+    "vocals": {
+      "present": false,
+      "active_sections": [
+        false,
+        false,
+        false,
+        false,
+        false,
+        false
+      ],
+      "automation": []
+    }
+  },
+  "suggested_devices": [
+    [
+      "atmo",
+      "Auto Filter"
+    ],
+    [
+      "bass",
+      "Utility"
+    ],
+    [
+      "hats",
+      "Utility"
+    ],
+    [
+      "kick",
+      "Utility"
+    ],
+    [
+      "perc",
+      "Utility"
+    ],
+    [
+      "ride",
+      "Utility"
+    ],
+    [
+      "synth",
+      "Auto Filter"
+    ]
+  ],
+  "hints": [
+    [
+      "sidechain_pump",
+      "bass"
+    ]
+  ]
+}

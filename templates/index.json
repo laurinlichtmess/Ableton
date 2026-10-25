@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "product": "Loop Sketch",
+  "templates": [
+    "techno-warehouse.json",
+    "techno-peak.json",
+    "techno-hypnotic.json",
+    "house-classic.json",
+    "house-deep.json",
+    "tech-house-groove.json"
+  ]
+}

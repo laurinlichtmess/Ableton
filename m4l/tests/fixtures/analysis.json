@@ -1,0 +1,2096 @@
+{
+ "schema_version": 2,
+ "engine_version": "0.2.0",
+ "source": {
+  "path": "/Users/demo/Music/reference.mp3",
+  "sha1": "d6d87418f4cf3332d910e7b8d888afda19f82730",
+  "duration_sec": 91.251,
+  "sample_rate": 22050
+ },
+ "tempo": {
+  "bpm": 128.0,
+  "confidence": 0.879,
+  "time_signature": [
+   4,
+   4
+  ],
+  "first_downbeat_sec": 0.2881,
+  "beat_sec": 0.46875,
+  "bar_sec": 1.875,
+  "num_bars": 49,
+  "downbeat_confidence": 1.0,
+  "source": "auto",
+  "candidates": [
+   {
+    "bpm": 128.0,
+    "relation": "1",
+    "score": 1.0
+   },
+   {
+    "bpm": 64.01,
+    "relation": "1/2",
+    "score": 0.044
+   },
+   {
+    "bpm": 85.34,
+    "relation": "2/3",
+    "score": 0.053
+   },
+   {
+    "bpm": 96.01,
+    "relation": "3/4",
+    "score": 0.174
+   },
+   {
+    "bpm": 170.69,
+    "relation": "4/3",
+    "score": 0.078
+   },
+   {
+    "bpm": 192.02,
+    "relation": "3/2",
+    "score": 0.183
+   },
+   {
+    "bpm": 256.03,
+    "relation": "2",
+    "score": 0.121
+   }
+  ]
+ },
+ "sections": [
+  {
+   "index": 0,
+   "label": "Intro",
+   "kind": "intro",
+   "group": "A",
+   "start_bar": 0,
+   "end_bar": 8,
+   "bars": 8,
+   "start_beat": 0,
+   "length_beats": 32,
+   "start_sec": 0.288,
+   "end_sec": 15.288,
+   "energy": 0.456,
+   "trend_db_per_bar": 0.008,
+   "elements": [
+    "hats",
+    "atmo"
+   ],
+   "added": [],
+   "removed": []
+  },
+  {
+   "index": 1,
+   "label": "Build",
+   "kind": "build",
+   "group": "B",
+   "start_bar": 8,
+   "end_bar": 16,
+   "bars": 8,
+   "start_beat": 32,
+   "length_beats": 32,
+   "start_sec": 15.288,
+   "end_sec": 30.288,
+   "energy": 0.761,
+   "trend_db_per_bar": 0.567,
+   "elements": [
+    "perc",
+    "ride",
+    "hats",
+    "atmo",
+    "synth"
+   ],
+   "added": [
+    "perc",
+    "ride",
+    "synth"
+   ],
+   "removed": []
+  },
+  {
+   "index": 2,
+   "label": "Drop 1",
+   "kind": "drop",
+   "group": "C",
+   "start_bar": 16,
+   "end_bar": 24,
+   "bars": 8,
+   "start_beat": 64,
+   "length_beats": 32,
+   "start_sec": 30.288,
+   "end_sec": 45.288,
+   "energy": 0.999,
+   "trend_db_per_bar": -0.042,
+   "elements": [
+    "kick",
+    "bass",
+    "perc",
+    "ride",
+    "hats",
+    "atmo",
+    "synth"
+   ],
+   "added": [
+    "kick",
+    "bass"
+   ],
+   "removed": []
+  },
+  {
+   "index": 3,
+   "label": "Breakdown",
+   "kind": "breakdown",
+   "group": "D",
+   "start_bar": 24,
+   "end_bar": 32,
+   "bars": 8,
+   "start_beat": 96,
+   "length_beats": 32,
+   "start_sec": 45.288,
+   "end_sec": 60.288,
+   "energy": 0.418,
+   "trend_db_per_bar": 0.072,
+   "elements": [
+    "atmo"
+   ],
+   "added": [],
+   "removed": [
+    "kick",
+    "bass",
+    "perc",
+    "ride",
+    "hats",
+    "synth"
+   ]
+  },
+  {
+   "index": 4,
+   "label": "Drop 2",
+   "kind": "drop",
+   "group": "C",
+   "start_bar": 32,
+   "end_bar": 40,
+   "bars": 8,
+   "start_beat": 128,
+   "length_beats": 32,
+   "start_sec": 60.288,
+   "end_sec": 75.288,
+   "energy": 1.0,
+   "trend_db_per_bar": -0.029,
+   "elements": [
+    "kick",
+    "bass",
+    "perc",
+    "ride",
+    "hats",
+    "atmo",
+    "synth"
+   ],
+   "added": [
+    "kick",
+    "bass",
+    "perc",
+    "ride",
+    "hats",
+    "synth"
+   ],
+   "removed": []
+  },
+  {
+   "index": 5,
+   "label": "Outro",
+   "kind": "outro",
+   "group": "E",
+   "start_bar": 40,
+   "end_bar": 49,
+   "bars": 9,
+   "start_beat": 160,
+   "length_beats": 36,
+   "start_sec": 75.288,
+   "end_sec": 91.251,
+   "energy": 0.0,
+   "trend_db_per_bar": -6.916,
+   "elements": [
+    "kick",
+    "bass"
+   ],
+   "added": [],
+   "removed": [
+    "perc",
+    "ride",
+    "hats",
+    "atmo",
+    "synth"
+   ]
+  }
+ ],
+ "separation": "bands",
+ "device": "cpu",
+ "stems": [
+  {
+   "name": "kick",
+   "display_name": "Kick",
+   "parent": "drums",
+   "separation": "bands",
+   "present": true,
+   "level_db": -21.2,
+   "active_sections": [
+    false,
+    false,
+    true,
+    false,
+    true,
+    true
+   ],
+   "presence_bars": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.96,
+    1.0,
+    0.96,
+    1.0,
+    0.96,
+    1.0,
+    0.94,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.96,
+    1.0,
+    0.96,
+    1.0,
+    0.95,
+    0.99,
+    0.97,
+    0.9,
+    0.72,
+    0.59,
+    0.41,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "active_spans": [
+    [
+     16,
+     24
+    ],
+    [
+     32,
+     44
+    ]
+   ],
+   "automation": [
+    {
+     "target": "gain",
+     "device": "Utility",
+     "class_name": "StereoGain",
+     "parameter": "Gain",
+     "unit": "dB",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 0.0
+      },
+      {
+       "beat": 161.0,
+       "value": -0.76
+      },
+      {
+       "beat": 163.0,
+       "value": -1.82
+      },
+      {
+       "beat": 164.0,
+       "value": -3.39
+      },
+      {
+       "beat": 165.0,
+       "value": -5.08
+      },
+      {
+       "beat": 167.0,
+       "value": -5.93
+      },
+      {
+       "beat": 169.0,
+       "value": -8.29
+      },
+      {
+       "beat": 171.0,
+       "value": -9.25
+      },
+      {
+       "beat": 172.0,
+       "value": -10.73
+      },
+      {
+       "beat": 173.0,
+       "value": -12.64
+      },
+      {
+       "beat": 174.0,
+       "value": -13.46
+      },
+      {
+       "beat": 177.0,
+       "value": -15.65
+      },
+      {
+       "beat": 178.0,
+       "value": -16.52
+      },
+      {
+       "beat": 180.0,
+       "value": -18.44
+      },
+      {
+       "beat": 181.0,
+       "value": -20.04
+      },
+      {
+       "beat": 182.0,
+       "value": -20.92
+      },
+      {
+       "beat": 185.0,
+       "value": -23.29
+      },
+      {
+       "beat": 187.0,
+       "value": -24.33
+      },
+      {
+       "beat": 188.0,
+       "value": -25.71
+      },
+      {
+       "beat": 189.0,
+       "value": -27.64
+      },
+      {
+       "beat": 190.0,
+       "value": -28.4
+      },
+      {
+       "beat": 191.0,
+       "value": -29.76
+      },
+      {
+       "beat": 192.0,
+       "value": 0.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 160,
+       "end_beat": 192,
+       "from": -23.0,
+       "to": -52.1,
+       "direction": "down"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "bass",
+   "display_name": "Bass",
+   "parent": "bass",
+   "separation": "bands",
+   "present": true,
+   "level_db": -39.0,
+   "active_sections": [
+    false,
+    false,
+    true,
+    false,
+    true,
+    true
+   ],
+   "presence_bars": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.98,
+    1.0,
+    0.98,
+    0.99,
+    0.97,
+    1.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.97,
+    1.0,
+    0.98,
+    0.99,
+    0.97,
+    1.0,
+    0.99,
+    0.97,
+    0.74,
+    0.6,
+    0.47,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "active_spans": [
+    [
+     16,
+     24
+    ],
+    [
+     32,
+     44
+    ]
+   ],
+   "automation": [
+    {
+     "target": "gain",
+     "device": "Utility",
+     "class_name": "StereoGain",
+     "parameter": "Gain",
+     "unit": "dB",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 0.0
+      },
+      {
+       "beat": 163.0,
+       "value": -1.47
+      },
+      {
+       "beat": 164.0,
+       "value": -3.93
+      },
+      {
+       "beat": 165.0,
+       "value": -4.78
+      },
+      {
+       "beat": 166.0,
+       "value": -5.59
+      },
+      {
+       "beat": 168.0,
+       "value": -6.39
+      },
+      {
+       "beat": 169.0,
+       "value": -8.13
+      },
+      {
+       "beat": 170.0,
+       "value": -9.11
+      },
+      {
+       "beat": 173.0,
+       "value": -11.37
+      },
+      {
+       "beat": 174.0,
+       "value": -13.14
+      },
+      {
+       "beat": 175.0,
+       "value": -14.23
+      },
+      {
+       "beat": 177.0,
+       "value": -15.65
+      },
+      {
+       "beat": 180.0,
+       "value": -19.01
+      },
+      {
+       "beat": 182.0,
+       "value": -20.67
+      },
+      {
+       "beat": 184.0,
+       "value": -21.51
+      },
+      {
+       "beat": 185.0,
+       "value": -23.32
+      },
+      {
+       "beat": 187.0,
+       "value": -24.75
+      },
+      {
+       "beat": 189.0,
+       "value": -26.59
+      },
+      {
+       "beat": 190.0,
+       "value": -28.06
+      },
+      {
+       "beat": 191.0,
+       "value": -29.29
+      },
+      {
+       "beat": 192.0,
+       "value": 0.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 160,
+       "end_beat": 192,
+       "from": -43.0,
+       "to": -71.6,
+       "direction": "down"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "clap",
+   "display_name": "Clap/Snare",
+   "parent": "drums",
+   "separation": "bands",
+   "present": false,
+   "level_db": -58.1,
+   "active_sections": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence_bars": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "active_spans": [],
+   "automation": []
+  },
+  {
+   "name": "hats",
+   "display_name": "Hats",
+   "parent": "drums",
+   "separation": "bands",
+   "present": true,
+   "level_db": -45.5,
+   "active_sections": [
+    true,
+    true,
+    true,
+    false,
+    true,
+    true
+   ],
+   "presence_bars": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence": [
+    0.9,
+    0.92,
+    0.89,
+    0.92,
+    0.89,
+    0.91,
+    0.91,
+    0.92,
+    0.92,
+    0.91,
+    0.9,
+    0.87,
+    0.91,
+    0.93,
+    0.97,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.98,
+    0.99,
+    1.0,
+    0.98,
+    0.98,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.98,
+    0.99,
+    0.97,
+    1.0,
+    0.99,
+    1.0,
+    1.0,
+    0.99,
+    0.84,
+    0.7,
+    0.55,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "active_spans": [
+    [
+     0,
+     24
+    ],
+    [
+     32,
+     43
+    ]
+   ],
+   "automation": [
+    {
+     "target": "gain",
+     "device": "Utility",
+     "class_name": "StereoGain",
+     "parameter": "Gain",
+     "unit": "dB",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 0.0
+      },
+      {
+       "beat": 161.0,
+       "value": -1.02
+      },
+      {
+       "beat": 163.0,
+       "value": -1.97
+      },
+      {
+       "beat": 164.0,
+       "value": -3.61
+      },
+      {
+       "beat": 166.0,
+       "value": -5.85
+      },
+      {
+       "beat": 168.0,
+       "value": -7.79
+      },
+      {
+       "beat": 170.0,
+       "value": -9.45
+      },
+      {
+       "beat": 172.0,
+       "value": -10.38
+      },
+      {
+       "beat": 173.0,
+       "value": -13.04
+      },
+      {
+       "beat": 175.0,
+       "value": -14.12
+      },
+      {
+       "beat": 176.0,
+       "value": -15.51
+      },
+      {
+       "beat": 178.0,
+       "value": -16.78
+      },
+      {
+       "beat": 179.0,
+       "value": -18.2
+      },
+      {
+       "beat": 181.0,
+       "value": -19.57
+      },
+      {
+       "beat": 183.0,
+       "value": -21.58
+      },
+      {
+       "beat": 184.0,
+       "value": -22.4
+      },
+      {
+       "beat": 186.0,
+       "value": -24.12
+      },
+      {
+       "beat": 187.0,
+       "value": -25.28
+      },
+      {
+       "beat": 189.0,
+       "value": -28.04
+      },
+      {
+       "beat": 191.0,
+       "value": -29.16
+      },
+      {
+       "beat": 192.0,
+       "value": 0.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 160,
+       "end_beat": 192,
+       "from": -48.5,
+       "to": -77.5,
+       "direction": "down"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "ride",
+   "display_name": "Ride",
+   "parent": "drums",
+   "separation": "bands",
+   "present": true,
+   "level_db": -48.5,
+   "active_sections": [
+    false,
+    true,
+    true,
+    false,
+    true,
+    false
+   ],
+   "presence_bars": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.53,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.99,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.99,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.99,
+    1.0,
+    0.99,
+    0.99,
+    1.0,
+    0.99,
+    0.99,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "active_spans": [
+    [
+     12,
+     24
+    ],
+    [
+     32,
+     40
+    ]
+   ],
+   "automation": [
+    {
+     "target": "gain",
+     "device": "Utility",
+     "class_name": "StereoGain",
+     "parameter": "Gain",
+     "unit": "dB",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 0.0
+      },
+      {
+       "beat": 48.0,
+       "value": -22.56
+      },
+      {
+       "beat": 49.0,
+       "value": -17.91
+      },
+      {
+       "beat": 50.0,
+       "value": -13.02
+      },
+      {
+       "beat": 51.0,
+       "value": -9.1
+      },
+      {
+       "beat": 52.0,
+       "value": -5.58
+      },
+      {
+       "beat": 53.0,
+       "value": -2.93
+      },
+      {
+       "beat": 54.0,
+       "value": -0.6
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 48,
+       "end_beat": 56,
+       "from": -67.6,
+       "to": -47.3,
+       "direction": "up"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "perc",
+   "display_name": "Percussion",
+   "parent": "drums",
+   "separation": "bands",
+   "present": true,
+   "level_db": -52.9,
+   "active_sections": [
+    false,
+    true,
+    true,
+    false,
+    true,
+    false
+   ],
+   "presence_bars": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.38,
+    0.69,
+    0.89,
+    0.88,
+    0.9,
+    0.91,
+    0.92,
+    0.99,
+    1.0,
+    0.92,
+    1.0,
+    0.99,
+    0.99,
+    0.94,
+    1.0,
+    1.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    1.0,
+    0.94,
+    1.0,
+    1.0,
+    1.0,
+    0.93,
+    0.99,
+    1.0,
+    0.58,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "active_spans": [
+    [
+     8,
+     24
+    ],
+    [
+     32,
+     41
+    ]
+   ],
+   "automation": [
+    {
+     "target": "gain",
+     "device": "Utility",
+     "class_name": "StereoGain",
+     "parameter": "Gain",
+     "unit": "dB",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 0.0
+      },
+      {
+       "beat": 24.0,
+       "value": -16.18
+      },
+      {
+       "beat": 25.0,
+       "value": -14.43
+      },
+      {
+       "beat": 28.0,
+       "value": -16.29
+      },
+      {
+       "beat": 30.0,
+       "value": -13.12
+      },
+      {
+       "beat": 36.0,
+       "value": -12.12
+      },
+      {
+       "beat": 37.0,
+       "value": -8.25
+      },
+      {
+       "beat": 38.0,
+       "value": -4.99
+      },
+      {
+       "beat": 39.0,
+       "value": -2.68
+      },
+      {
+       "beat": 40.0,
+       "value": -0.84
+      },
+      {
+       "beat": 54.0,
+       "value": 0.0
+      },
+      {
+       "beat": 160.0,
+       "value": -9.77
+      },
+      {
+       "beat": 161.0,
+       "value": -11.82
+      },
+      {
+       "beat": 163.0,
+       "value": -13.61
+      },
+      {
+       "beat": 165.0,
+       "value": -15.98
+      },
+      {
+       "beat": 166.0,
+       "value": -18.47
+      },
+      {
+       "beat": 168.0,
+       "value": -16.01
+      },
+      {
+       "beat": 170.0,
+       "value": -18.72
+      },
+      {
+       "beat": 171.0,
+       "value": -20.39
+      },
+      {
+       "beat": 173.0,
+       "value": -21.24
+      },
+      {
+       "beat": 175.0,
+       "value": -22.11
+      },
+      {
+       "beat": 176.0,
+       "value": -24.38
+      },
+      {
+       "beat": 177.0,
+       "value": -27.0
+      },
+      {
+       "beat": 179.0,
+       "value": -28.52
+      },
+      {
+       "beat": 181.0,
+       "value": -31.44
+      },
+      {
+       "beat": 182.0,
+       "value": -33.82
+      },
+      {
+       "beat": 184.0,
+       "value": -30.77
+      },
+      {
+       "beat": 186.0,
+       "value": -33.34
+      },
+      {
+       "beat": 187.0,
+       "value": -35.37
+      },
+      {
+       "beat": 188.0,
+       "value": 0.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 24,
+       "end_beat": 55,
+       "from": -71.0,
+       "to": -55.7,
+       "direction": "up"
+      },
+      {
+       "start_beat": 158,
+       "end_beat": 188,
+       "from": -53.6,
+       "to": -88.0,
+       "direction": "down"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "atmo",
+   "display_name": "Atmo/Pads",
+   "parent": "other",
+   "separation": "bands",
+   "present": true,
+   "level_db": -27.2,
+   "active_sections": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    false
+   ],
+   "presence_bars": [
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence": [
+    0.7,
+    0.7,
+    0.7,
+    0.7,
+    0.7,
+    0.7,
+    0.7,
+    0.7,
+    0.87,
+    0.99,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.59,
+    0.6,
+    0.59,
+    0.62,
+    0.59,
+    0.63,
+    0.63,
+    0.61,
+    0.7,
+    0.7,
+    0.7,
+    0.71,
+    0.69,
+    0.7,
+    0.7,
+    0.7,
+    0.61,
+    0.6,
+    0.59,
+    0.63,
+    0.59,
+    0.62,
+    0.61,
+    0.62,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "active_spans": [
+    [
+     0,
+     40
+    ]
+   ],
+   "automation": [
+    {
+     "target": "filter_cutoff",
+     "device": "Auto Filter",
+     "class_name": "AutoFilter",
+     "parameter": "Frequency",
+     "unit": "Hz",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 333.76
+      },
+      {
+       "beat": 39.0,
+       "value": 430.66
+      },
+      {
+       "beat": 41.0,
+       "value": 549.1
+      },
+      {
+       "beat": 44.0,
+       "value": 662.15
+      },
+      {
+       "beat": 45.0,
+       "value": 839.79
+      },
+      {
+       "beat": 46.0,
+       "value": 882.86
+      },
+      {
+       "beat": 47.0,
+       "value": 931.31
+      },
+      {
+       "beat": 48.0,
+       "value": 990.53
+      },
+      {
+       "beat": 50.0,
+       "value": 1103.58
+      },
+      {
+       "beat": 51.0,
+       "value": 1313.53
+      },
+      {
+       "beat": 52.0,
+       "value": 1378.12
+      },
+      {
+       "beat": 53.0,
+       "value": 20000.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 37,
+       "end_beat": 53,
+       "from": 336.4,
+       "to": 1345.4,
+       "direction": "up"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "synth",
+   "display_name": "Synth/Lead",
+   "parent": "other",
+   "separation": "bands",
+   "present": true,
+   "level_db": -33.7,
+   "active_sections": [
+    false,
+    true,
+    true,
+    false,
+    true,
+    false
+   ],
+   "presence_bars": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.52,
+    0.69,
+    0.73,
+    0.85,
+    0.88,
+    0.86,
+    0.95,
+    0.9,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    1.0,
+    0.98,
+    1.0,
+    0.99,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.99,
+    1.0,
+    1.0,
+    0.99,
+    1.0,
+    0.99,
+    1.0,
+    0.99,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "active_spans": [
+    [
+     8,
+     24
+    ],
+    [
+     32,
+     40
+    ]
+   ],
+   "automation": [
+    {
+     "target": "filter_cutoff",
+     "device": "Auto Filter",
+     "class_name": "AutoFilter",
+     "parameter": "Frequency",
+     "unit": "Hz",
+     "points": [
+      {
+       "beat": 0.0,
+       "value": 344.53
+      },
+      {
+       "beat": 32.0,
+       "value": 317.61
+      },
+      {
+       "beat": 36.0,
+       "value": 344.53
+      },
+      {
+       "beat": 37.0,
+       "value": 430.66
+      },
+      {
+       "beat": 38.0,
+       "value": 559.86
+      },
+      {
+       "beat": 39.0,
+       "value": 667.53
+      },
+      {
+       "beat": 40.0,
+       "value": 829.03
+      },
+      {
+       "beat": 43.0,
+       "value": 1098.19
+      },
+      {
+       "beat": 46.0,
+       "value": 1534.24
+      },
+      {
+       "beat": 48.0,
+       "value": 1663.44
+      },
+      {
+       "beat": 49.0,
+       "value": 1948.75
+      },
+      {
+       "beat": 51.0,
+       "value": 2196.39
+      },
+      {
+       "beat": 52.0,
+       "value": 2314.82
+      },
+      {
+       "beat": 54.0,
+       "value": 2497.85
+      },
+      {
+       "beat": 56.0,
+       "value": 2627.05
+      },
+      {
+       "beat": 57.0,
+       "value": 20000.0
+      }
+     ],
+     "ramps": [
+      {
+       "start_beat": 35,
+       "end_beat": 57,
+       "from": 328.0,
+       "to": 2561.6,
+       "direction": "up"
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "name": "vocals",
+   "display_name": "Vocals",
+   "parent": "vocals",
+   "separation": "bands",
+   "present": false,
+   "level_db": -100.0,
+   "active_sections": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence_bars": [
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false
+   ],
+   "presence": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+   ],
+   "active_spans": [],
+   "automation": []
+  }
+ ],
+ "suggested_devices": [
+  {
+   "stem": "kick",
+   "device": "Utility",
+   "class_name": "StereoGain",
+   "automation_target": "gain",
+   "reason": "1 Fade(s) erkannt: Takt 41-48"
+  },
+  {
+   "stem": "bass",
+   "device": "Utility",
+   "class_name": "StereoGain",
+   "automation_target": "gain",
+   "reason": "1 Fade(s) erkannt: Takt 41-48"
+  },
+  {
+   "stem": "hats",
+   "device": "Utility",
+   "class_name": "StereoGain",
+   "automation_target": "gain",
+   "reason": "1 Fade(s) erkannt: Takt 41-48"
+  },
+  {
+   "stem": "ride",
+   "device": "Utility",
+   "class_name": "StereoGain",
+   "automation_target": "gain",
+   "reason": "1 Fade(s) erkannt: Takt 13-14"
+  },
+  {
+   "stem": "perc",
+   "device": "Utility",
+   "class_name": "StereoGain",
+   "automation_target": "gain",
+   "reason": "2 Fade(s) erkannt: Takt 7-13, Takt 40-47"
+  },
+  {
+   "stem": "atmo",
+   "device": "Auto Filter",
+   "class_name": "AutoFilter",
+   "automation_target": "filter_cutoff",
+   "reason": "1 Cutoff-Sweep(s) erkannt: Takt 10-13"
+  },
+  {
+   "stem": "synth",
+   "device": "Auto Filter",
+   "class_name": "AutoFilter",
+   "automation_target": "filter_cutoff",
+   "reason": "1 Cutoff-Sweep(s) erkannt: Takt 9-14"
+  }
+ ],
+ "hints": [
+  {
+   "type": "sidechain_pump",
+   "depth_db": 9.2,
+   "release_beats": 0.25,
+   "stem": "bass",
+   "message": "bass: beat-synchrones Pumpen (~9.2 dB) - Sidechain-Kompressor von der Kick empfohlen"
+  }
+ ],
+ "warnings": []
+}
