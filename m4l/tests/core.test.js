@@ -107,23 +107,42 @@ test("findParam: exakter Name vor Praefix", function () {
   assert.equal(core.findParam(params, "Gain"), null);
 });
 
-test("buildPlan mit echter Engine-Analyse (feine Elemente)", function () {
+test("referenceLengthBeats nimmt das Maximum aus Abschnitten/Dauer/Takten", function () {
+  var len = core.referenceLengthBeats(analysis);
+  var last = analysis.sections[analysis.sections.length - 1];
+  var sectionEnd = last.start_beat + last.length_beats;
+  var fromDur = analysis.source.duration_sec * analysis.tempo.bpm / 60;
+  var fromBars = analysis.tempo.num_bars * 4;
+  assert.ok(Math.abs(len - Math.max(sectionEnd, fromDur, fromBars)) < 0.02);
+  assert.ok(len >= sectionEnd - 1e-6);
+});
+
+test("buildPlan kachelt Loops ueber die volle Referenzlaenge", function () {
   var state = { tracks: TRACKS };
   var mapping = { kick: 0, bass: 1, synth: 4, atmo: 5 };
   var plan = core.buildPlan(analysis, state, {}, mapping);
+  var refLen = core.referenceLengthBeats(analysis);
   assert.equal(plan.tempo, analysis.tempo.bpm);
+  assert.equal(plan.reference_length_beats, refLen);
   assert.deepEqual(plan.locators.map(function (l) { return l.name; }), analysis.sections.map(function (s) { return s.label; }));
   assert.deepEqual(plan.locators[1], { time: analysis.sections[1].start_beat, name: analysis.sections[1].label });
 
+  assert.equal(plan.tracks.length, 4, "alle gemappten Spuren mit Loop bekommen Clips");
+  plan.tracks.forEach(function (t) {
+    assert.ok(t.clips.length >= 2, t.stem + " braucht mehrere Kacheln, nicht nur 1–2 Abschnitte");
+    assert.ok(Math.abs(t.coverage_beats - refLen) < 0.05, t.stem + " deckt volle Laenge ab");
+    assert.equal(t.carved, false, "Default ohne Presence-Carve");
+    assert.equal(t.clips[0].color_index, t.source_loop.color_index);
+    assert.equal(t.clips[0].source_kind, "session");
+    var covered = t.clips.reduce(function (s, c) { return s + c.length; }, 0);
+    assert.ok(Math.abs(covered - refLen) < 0.05);
+  });
+
   var synth = plan.tracks.find(function (t) { return t.stem === "synth"; });
   assert.ok(synth, "Synth-Spur im Plan");
-  var synthStem = analysis.stems.find(function (s) { return s.name === "synth"; });
-  var activeCount = synthStem.active_sections.filter(Boolean).length;
-  assert.ok(synth.clips.length >= activeCount, "Clips fuer aktive Teile (+ ggf. Automations-Ueberhang)");
   var build = synth.clips.find(function (c) { return c.name === "Build"; });
-  assert.ok(build, "Build-Clip geplant");
+  assert.ok(build, "Build-Kachel geplant");
   assert.equal(build.color_index, 14, "Farbe vom Quell-Loop");
-  assert.equal(build.source_kind, "session");
   var env = build.envelopes.find(function (e) { return e.target === "filter_cutoff"; });
   assert.ok(env && env.steps.length > 1, "Sweep braucht mehrere Schritte");
   var total = env.steps.reduce(function (s, x) { return s + x[1]; }, 0);
@@ -131,7 +150,26 @@ test("buildPlan mit echter Engine-Analyse (feine Elemente)", function () {
   assert.ok(plan.devices.some(function (d) { return d.track === 4 && d.class_name === "AutoFilter"; }));
   var stats = core.planStats(plan);
   assert.equal(stats.locators, analysis.sections.length);
-  assert.ok(stats.clips > 0);
+  assert.ok(stats.clips >= 4 * Math.floor(refLen / 32), "viele Kacheln statt ~3 Clips gesamt");
+});
+
+test("buildPlan: dünne/fehlende Presence → trotzdem volle Kachelung", function () {
+  var sparse = JSON.parse(JSON.stringify(analysis));
+  sparse.stems.forEach(function (s) {
+    s.active_sections = s.active_sections.map(function (_, i) { return i === 2; });
+    s.presence_bars = s.presence_bars.map(function () { return false; });
+    s.presence_bars[16] = true;
+  });
+  var plan = core.buildPlan(sparse, { tracks: TRACKS }, {}, { kick: 0, synth: 4 });
+  var refLen = core.referenceLengthBeats(sparse);
+  plan.tracks.forEach(function (t) {
+    assert.ok(Math.abs(t.coverage_beats - refLen) < 0.05, t.stem + " Fallback volle Laenge");
+  });
+  // Explizite Carve-outs bei brauchbarer Presence sparren Stille, bleiben aber spielbar.
+  var carved = core.buildPlan(analysis, { tracks: TRACKS }, { presence_carve_outs: true }, { kick: 0 });
+  var kick = carved.tracks.find(function (t) { return t.stem === "kick"; });
+  assert.ok(kick && kick.clips.length >= 1);
+  assert.ok(kick.coverage_beats > 16, "Carve laesst Spur nicht fast leer");
 });
 
 test("buildPlan: ohne Arrangement-Option keine Clips; fehlender Loop wird gemeldet", function () {

@@ -104,12 +104,15 @@ test("Anwenden baut Tempo, Locators, Geraete, Clips mit Envelopes im Arrangement
   assert.equal(report.devices_inserted.length, 3);
 
   var lead = song.tracks[2];
-  var synthStem = analysis.stems.find(function (st) { return st.name === "synth"; });
-  var activeSynth = synthStem.active_sections.filter(Boolean).length;
-  assert.ok(lead.arrangement_clips.length >= activeSynth);
+  var core = require("../js/rr_core");
+  var refLen = core.referenceLengthBeats(analysis);
+  // Volle Laenge: Loop-Kacheln decken die Referenz ab (nicht nur active_sections).
+  assert.ok(lead.arrangement_clips.length >= Math.floor(refLen / 32), "Synth voll gekachelt");
+  var leadCover = lead.arrangement_clips.reduce(function (sum, c) { return sum + c.length; }, 0);
+  assert.ok(Math.abs(leadCover - refLen) < 1, "Synth Arrangement ≈ Referenzlaenge");
   var build = lead.arrangement_clips.find(function (c) { return c.name === "Build"; });
+  assert.ok(build, "Build-Kachel vorhanden");
   assert.equal(build.start_time, analysis.sections[1].start_beat);
-  assert.equal(build.length, analysis.sections[1].length_beats);
   assert.equal(build.color_index, 14, "Farbe wie Original-Loop");
   assert.ok(build.notes && build.notes.length > 0, "Inhalt vom Quell-Loop, nicht leer");
   var env = build.envelopes[Object.keys(build.envelopes)[0]];
@@ -124,14 +127,17 @@ test("Anwenden baut Tempo, Locators, Geraete, Clips mit Envelopes im Arrangement
   assert.equal(song.tracks[0].clip_slots[0].clip.name, "user clip");
   assert.equal(song.tracks[0].arrangement_clips[0].color_index, 69);
   assert.ok(song.tracks[0].arrangement_clips[0].notes.length > 0);
+  var kickCover = song.tracks[0].arrangement_clips.reduce(function (sum, c) { return sum + c.length; }, 0);
+  assert.ok(Math.abs(kickCover - refLen) < 1, "Kick voll gekachelt");
   assert.equal(song.tracks[3].arrangement_clips.length, 0, "Audiospur ohne Stem bleibt leer");
 
   assert.equal(report.locators, analysis.sections.length);
-  assert.ok(report.clips >= activeSynth && report.envelopes > 0);
+  assert.ok(report.clips >= Math.floor(refLen / 32) * 2 && report.envelopes > 0);
   assert.match(s.ui.statuses.pop(), /^Fertig: /);
   var summary = s.ui.summaries.pop();
-  assert.ok(summary.indexOf("Loop (mit Noten/Audio)") !== -1);
-  assert.ok(summary.indexOf("nur wenn Automation wirklich geschrieben") !== -1);
+  assert.ok(summary.indexOf("volle Referenzlänge gekachelt") !== -1 ||
+    summary.indexOf("volle Referenzlaenge gekachelt") !== -1);
+  assert.ok(summary.indexOf("nur wenn Automation wirklich") !== -1);
 });
 
 test("Ohne Remote Script: Locators und Clips trotzdem, Automation mit Hinweis uebersprungen", async function () {

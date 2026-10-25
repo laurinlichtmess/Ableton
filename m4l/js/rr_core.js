@@ -240,17 +240,178 @@ function trackByIndex(state, idx) {
   return null;
 }
 
+function beatsPerBar(analysis) {
+  var ts = analysis && analysis.tempo && analysis.tempo.time_signature;
+  var n = ts && ts[0] ? Number(ts[0]) : 4;
+  return n > 0 ? n : 4;
+}
+
+// Zuverlaessigste Referenzlaenge in Beats: max(Abschnittsende, Dauer×BPM, Takte×Beats).
+function referenceLengthBeats(analysis) {
+  var fromSections = 0;
+  (analysis.sections || []).forEach(function (s) {
+    var end = Number(s.start_beat || 0) + Number(s.length_beats || 0);
+    if (end > fromSections) fromSections = end;
+  });
+  var bpm = (analysis.tempo && analysis.tempo.bpm) || 0;
+  var fromDuration = 0;
+  if (bpm > 0 && analysis.source && analysis.source.duration_sec > 0) {
+    fromDuration = Number(analysis.source.duration_sec) * bpm / 60;
+  }
+  var bpb = beatsPerBar(analysis);
+  var fromBars = 0;
+  if (analysis.tempo && analysis.tempo.num_bars > 0) {
+    fromBars = Number(analysis.tempo.num_bars) * bpb;
+  }
+  var len = Math.max(fromSections, fromDuration, fromBars);
+  return len > 0 ? round3(len) : 0;
+}
+
+function sectionIndexAt(sections, beat) {
+  for (var i = 0; i < (sections || []).length; i++) {
+    var s = sections[i];
+    var start = Number(s.start_beat || 0);
+    var end = start + Number(s.length_beats || 0);
+    if (beat >= start - 1e-9 && beat < end - 1e-9) return i;
+  }
+  if ((sections || []).length && beat >= 0) return sections.length - 1;
+  return -1;
+}
+
+function loopTileLength(source, totalBeats) {
+  var len = source && Number(source.length);
+  if (!(len > 0.05)) len = 32;
+  if (totalBeats > 0 && len > totalBeats) len = totalBeats;
+  return len;
+}
+
+// Anteil der Referenz, in dem Presence/active_sections das Element als aktiv sieht.
+function presenceActiveFraction(stem, totalBeats, bpb) {
+  var bars = stem && stem.presence_bars;
+  if (bars && bars.length) {
+    var on = 0;
+    for (var i = 0; i < bars.length; i++) if (bars[i]) on++;
+    return on / bars.length;
+  }
+  var active = stem && stem.active_sections;
+  if (active && active.length) {
+    var aOn = 0;
+    for (var j = 0; j < active.length; j++) if (active[j] !== false) aOn++;
+    return aOn / active.length;
+  }
+  return null;
+}
+
+// Presence-Carve-outs nur wenn explizit an und Daten nicht zu dünn / Spur nicht fast leer.
+function shouldCarvePresence(stem, totalBeats, loopLen, options) {
+  if (!(options && options.presence_carve_outs)) return false;
+  var frac = presenceActiveFraction(stem, totalBeats, beatsPerBar({ tempo: { time_signature: [4, 4] } }));
+  if (frac === null) return false;
+  if (frac < 0.2) return false;
+  if (frac * totalBeats < Math.max(loopLen * 0.5, 8)) return false;
+  return true;
+}
+
+function tileRegionActive(stem, startBeat, lengthBeats, sections, bpb) {
+  var bars = stem && stem.presence_bars;
+  if (bars && bars.length) {
+    var startBar = Math.max(0, Math.floor(startBeat / bpb + 1e-9));
+    var endBar = Math.min(bars.length, Math.ceil((startBeat + lengthBeats) / bpb - 1e-9));
+    if (endBar <= startBar) endBar = Math.min(bars.length, startBar + 1);
+    var on = 0;
+    var total = 0;
+    for (var b = startBar; b < endBar; b++) {
+      total++;
+      if (bars[b]) on++;
+    }
+    if (total === 0) return true;
+    return on / total >= 0.25;
+  }
+  var si = sectionIndexAt(sections, startBeat);
+  if (si < 0 || !stem.active_sections) return true;
+  return stem.active_sections[si] !== false;
+}
+
+// Loop-Kacheln über [0, totalBeats). Default: durchgehend. Optional Presence-Stille.
+function buildLoopTiles(stem, source, sections, totalBeats, options) {
+  var loopLen = loopTileLength(source, totalBeats);
+  var bpb = 4;
+  if (options && options.beats_per_bar > 0) bpb = options.beats_per_bar;
+  var carve = shouldCarvePresence(stem, totalBeats, loopLen, options);
+  var tiles = [];
+  if (!(totalBeats > 0.05) || !(loopLen > 0.05)) return { tiles: tiles, carved: false, loop_length: loopLen };
+  var t = 0;
+  var n = 0;
+  while (t < totalBeats - 1e-6) {
+    var len = Math.min(loopLen, round3(totalBeats - t));
+    if (!(len > 0.05)) break;
+    if (!carve || tileRegionActive(stem, t, len, sections, bpb)) {
+      var si = sectionIndexAt(sections, t);
+      var label = si >= 0 && sections[si] ? sections[si].label : ("Loop " + (n + 1));
+      tiles.push({
+        section: si,
+        start: round3(t),
+        length: len,
+        name: label,
+        color_index: source.color_index,
+        source_kind: source.kind,
+        source_index: source.index,
+        source_length: source.length,
+      });
+      n++;
+    }
+    t = round3(t + len);
+  }
+  // Carve würde Spur fast leer lassen → volle durchgehende Kachelung.
+  var covered = tiles.reduce(function (s, c) { return s + c.length; }, 0);
+  if (carve && (tiles.length === 0 || covered < Math.max(loopLen * 0.5, totalBeats * 0.2))) {
+    return buildLoopTiles(stem, source, sections, totalBeats, Object.assign({}, options, { presence_carve_outs: false }));
+  }
+  return { tiles: tiles, carved: carve, loop_length: loopLen };
+}
+
+function attachTileEnvelopes(tiles, automation) {
+  return tiles.map(function (tile) {
+    var envs = [];
+    (automation || []).forEach(function (a) {
+      var steps = sliceAutomation(a.points, tile.start, tile.length);
+      if (!stepsHaveMotion(a.target, steps)) return;
+      envs.push({
+        target: a.target, device: a.device,
+        class_name: a.class_name || DEVICE_CLASS[a.device],
+        parameter: a.parameter, unit: a.unit, steps: steps,
+      });
+    });
+    return Object.assign({}, tile, { envelopes: envs });
+  });
+}
+
+function trackCoverageBeats(clips) {
+  return (clips || []).reduce(function (s, c) { return s + Number(c.length || 0); }, 0);
+}
+
 // Plan aus Analyse + Live-Zustand + Optionen. Enthaelt Werte noch in Hz/dB; die Umrechnung in
 // Parameter-Rohwerte passiert beim Ausfuehren (braucht str_for_value aus Live).
-// Arrangement: vorhandene ~8-Takt-Loops der Spur werden pro aktivem Songteil platziert (keine leeren Clips).
+// Arrangement: Quell-~8-Takt-Loop jeder gemappten Spur wird über die volle Referenzlänge gekachelt
+// (MIDI-Noten bleiben). Presence-Stille nur optional; bei dünner Presence → durchgehende Kachelung.
 // Geraete nur planen, wenn spaeter wirklich nicht-neutrale Automation geschrieben wird (kein Orphan-FX).
 function buildPlan(analysis, state, options, mapping) {
-  var opts = Object.assign({ build_arrangement: true, apply_automation: true, set_tempo: true }, options || {});
+  var opts = Object.assign({
+    build_arrangement: true, apply_automation: true, set_tempo: true, presence_carve_outs: false,
+  }, options || {});
   var sections = analysis.sections || [];
-  var plan = { tempo: null, locators: [], tracks: [], devices: [], warnings: [] };
+  var totalBeats = referenceLengthBeats(analysis);
+  var bpb = beatsPerBar(analysis);
+  var plan = {
+    tempo: null, locators: [], tracks: [], devices: [], warnings: [],
+    reference_length_beats: totalBeats,
+  };
   if (opts.build_arrangement) {
     if (opts.set_tempo && analysis.tempo) plan.tempo = analysis.tempo.bpm;
     plan.locators = sections.map(function (s) { return { time: s.start_beat, name: s.label }; });
+    if (!(totalBeats > 0)) {
+      plan.warnings.push("Referenzlaenge unbekannt (keine Abschnitte/Dauer/Takte) – keine Clips.");
+    }
   }
   (analysis.stems || []).forEach(function (stem) {
     var idx = mapping ? mapping[stem.name] : null;
@@ -281,32 +442,13 @@ function buildPlan(analysis, state, options, mapping) {
         "(Audiospur nur im Arrangement – Loop in einen Session-Slot kopieren fuer Utility/Filter).");
     }
     var clips = [];
-    if (opts.build_arrangement && source) {
-      sections.forEach(function (s, i) {
-        var active = !stem.active_sections || stem.active_sections[i] !== false;
-        if (!active) return;
-        var envs = [];
-        automation.forEach(function (a) {
-          var steps = sliceAutomation(a.points, s.start_beat, s.length_beats);
-          if (!stepsHaveMotion(a.target, steps)) return;
-          envs.push({
-            target: a.target, device: a.device,
-            class_name: a.class_name || DEVICE_CLASS[a.device],
-            parameter: a.parameter, unit: a.unit, steps: steps,
-          });
-        });
-        clips.push({
-          section: i,
-          start: s.start_beat,
-          length: s.length_beats,
-          name: s.label,
-          color_index: source.color_index,
-          source_kind: source.kind,
-          source_index: source.index,
-          source_length: source.length,
-          envelopes: envs,
-        });
+    var tiled = null;
+    if (opts.build_arrangement && source && totalBeats > 0) {
+      tiled = buildLoopTiles(stem, source, sections, totalBeats, {
+        presence_carve_outs: opts.presence_carve_outs,
+        beats_per_bar: bpb,
       });
+      clips = attachTileEnvelopes(tiled.tiles, automation);
     }
     // Geraete nur, wenn mindestens ein Clip eine echte Envelope bekommt.
     var neededDevices = {};
@@ -330,13 +472,13 @@ function buildPlan(analysis, state, options, mapping) {
         stem: stem.name,
         source_loop: source,
         can_automate: canAutomate,
+        coverage_beats: trackCoverageBeats(clips),
+        reference_length_beats: totalBeats,
+        carved: !!(tiled && tiled.carved),
         clips: clips,
       });
-    } else if (opts.build_arrangement && source && stem.present !== false) {
-      var anyActive = !stem.active_sections || stem.active_sections.some(function (a) { return a !== false; });
-      if (!anyActive) {
-        plan.warnings.push("'" + track.name + "' (" + label + "): in der Referenz nirgends aktiv – keine Clips.");
-      }
+    } else if (opts.build_arrangement && source && totalBeats > 0) {
+      plan.warnings.push("'" + track.name + "' (" + label + "): keine Loop-Kacheln geplant.");
     }
   });
   return plan;
@@ -410,6 +552,10 @@ module.exports = {
   findDevice: findDevice,
   findParam: findParam,
   trackByIndex: trackByIndex,
+  beatsPerBar: beatsPerBar,
+  referenceLengthBeats: referenceLengthBeats,
+  buildLoopTiles: buildLoopTiles,
+  shouldCarvePresence: shouldCarvePresence,
   buildPlan: buildPlan,
   planStats: planStats,
   formatSummary: formatSummary,

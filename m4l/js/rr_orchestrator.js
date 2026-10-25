@@ -416,8 +416,9 @@ Orchestrator.prototype._finish = function (scene, report) {
     self.status(text);
     var summary = core.formatSummary(self.analysis, self.mapping(), self.state);
     if (report.clips > 0) {
-      summary += "\n\nHinweis: Pro aktivem Songteil liegt dein Loop (mit Noten/Audio) im Arrangement, " +
-        "Farbe wie das Original. Auto Filter/Utility nur wenn Automation wirklich geschrieben wurde.";
+      summary += "\n\nHinweis: Dein ~8-Takt-Loop ist ueber die volle Referenzlaenge gekachelt (Noten/Audio + Farbe " +
+        "wie das Original). Presence-Stille nur optional. Auto Filter/Utility nur wenn Automation wirklich " +
+        "geschrieben wurde.";
     }
     if (report.warnings.length) summary += "\n\nHinweise beim Anwenden:\n  " + report.warnings.join("\n  ");
     self.deps.ui.summary(summary);

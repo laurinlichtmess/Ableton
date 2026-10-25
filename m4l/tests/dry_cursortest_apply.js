@@ -60,8 +60,9 @@ async function main() {
   });
 
   var plan = core.buildPlan(analysis, state, { build_arrangement: true, apply_automation: true, set_tempo: true }, mapping);
+  var refLen = core.referenceLengthBeats(analysis);
   console.log("\nPlan: tempo=", plan.tempo, "locators=", plan.locators.length,
-    "tracks=", plan.tracks.length, "devices=", plan.devices.length);
+    "tracks=", plan.tracks.length, "devices=", plan.devices.length, "refBeats=", refLen);
   plan.devices.forEach(function (d) {
     console.log("  device", d.track, d.device, "present=" + d.present);
   });
@@ -69,13 +70,15 @@ async function main() {
   plan.tracks.forEach(function (t) {
     var withEnv = t.clips.filter(function (c) { return c.envelopes.length; }).length;
     console.log("  track", t.track, t.name, "stem=" + t.stem, "clips=" + t.clips.length,
-      "envClips=" + withEnv, "can_automate=" + t.can_automate);
+      "cover=" + t.coverage_beats, "envClips=" + withEnv, "can_automate=" + t.can_automate);
   });
 
   assert.ok(plan.tracks.length >= 4, "mind. Kick/Hats/Clap/Synth gemappt mit Clips");
   plan.tracks.forEach(function (t) {
     assert.ok(t.clips.length > 0);
     assert.ok(t.source_loop);
+    assert.ok(Math.abs(t.coverage_beats - refLen) < 0.1,
+      t.name + " muss volle Referenzlaenge decken, cover=" + t.coverage_beats + " ref=" + refLen);
   });
   // Kein Device ohne Envelope-Bedarf
   plan.devices.forEach(function (d) {
@@ -132,27 +135,31 @@ async function main() {
   });
 
   var midiWithClips = 0;
+  var minTiles = Math.floor(refLen / 32);
   live.song.tracks.forEach(function (tr, i) {
-    var arr = tr.arrangement_clips.filter(function (c) {
-      return c.start_time > 0.1 || (c.name && /Intro|Build|Drop|Verse|Chorus|Outro|Break/i.test(c.name));
+    var placed = tr.arrangement_clips.filter(function (c) {
+      return analysis.sections.some(function (s) { return s.label === c.name; }) ||
+        (c.start_time >= 0 && c.length > 0 && c.name);
     });
-    // Count section placements (name matches analysis labels)
-    var sectionClips = tr.arrangement_clips.filter(function (c) {
-      return analysis.sections.some(function (s) { return s.label === c.name; });
-    });
-    if (sectionClips.length) {
+    // Ignore the original source loop if it wasn't replaced — count tiles by coverage.
+    var cover = tr.arrangement_clips.reduce(function (s, c) { return s + (c.length || 0); }, 0);
+    // Source loop at 0 may remain; coverage after apply should reach ~refLen for mapped MIDI tracks.
+    var mapped = ["kick", "hihat", "clap", "perc synth", "303", "ride"].indexOf(tr.name) !== -1;
+    if (mapped && tr.has_midi_input) {
       midiWithClips++;
-      var notesOk = sectionClips.every(function (c) {
-        return !tr.has_midi_input || (c.notes && c.notes.length > 0);
+      var notesOk = tr.arrangement_clips.every(function (c) {
+        return !c.notes || c.notes.length > 0 || c.audio;
       });
-      var colors = sectionClips.map(function (c) { return c.color_index; });
-      console.log("  arranged", i, tr.name, "sectionClips=" + sectionClips.length,
-        "notesOk=" + notesOk, "colors=" + colors.slice(0, 3).join(","));
-      assert.ok(notesOk, tr.name + " hat leere MIDI-Section-Clips");
+      // Full-length: arrangement coverage ≈ reference (source + tiles, or tiles alone).
+      assert.ok(cover + 0.5 >= refLen, tr.name + " cover=" + cover + " < ref=" + refLen);
+      assert.ok(tr.arrangement_clips.length >= minTiles, tr.name + " zu wenige Kacheln");
+      assert.ok(notesOk, tr.name + " hat leere MIDI-Clips");
+      console.log("  arranged", i, tr.name, "clips=" + tr.arrangement_clips.length,
+        "cover=" + cover, "notesOk=" + notesOk);
     }
   });
-  assert.ok(midiWithClips >= 4, "zu wenige Spuren mit Section-Clips: " + midiWithClips);
-  assert.ok(report.clips >= 10, "zu wenige Clips: " + report.clips);
+  assert.ok(midiWithClips >= 4, "zu wenige Spuren mit Clips: " + midiWithClips);
+  assert.ok(report.clips >= minTiles * 4, "zu wenige Clips: " + report.clips + " (erwartet ≥" + (minTiles * 4) + ")");
   assert.ok(report.envelopes > 0, "keine Envelopes geschrieben");
   // Jedes geladene Device muss zu einer Spur mit Envelope gehoeren
   remoteCalls.filter(function (c) { return c.cmd === "load_device"; }).forEach(function (c) {
@@ -161,7 +168,7 @@ async function main() {
     });
     assert.ok(writes.length > 0, "Orphan load_device ohne Envelope: " + c.device + " @" + c.track_index);
   });
-  console.log("\nDRY OK — notes+structure+automation-with-devices");
+  console.log("\nDRY OK — full-length-tiles+notes+automation-with-devices");
   console.log("Summary tail:\n", (ui.summaries[ui.summaries.length - 1] || "").slice(-400));
 }
 
