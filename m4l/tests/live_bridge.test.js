@@ -37,7 +37,34 @@ test("get_state liest Spuren, Geraete und Locators", function () {
   assert.equal(r.tracks[1].has_midi_input, false);
   assert.equal(r.tracks[2].is_foldable, true);
   assert.deepEqual(r.tracks[0].devices[0], { index: 0, name: "Auto Filter", class_name: "AutoFilter" });
+  assert.equal(r.tracks[0].source_loop, null);
   assert.equal(s.bridge.raw({ op: "ping" }).result.live_version, "11.3.25");
+});
+
+test("place_loop dupliziert Session-Loop ins Arrangement mit Farbe und Laenge", function () {
+  var s = setup();
+  s.live.song.tracks[0].clip_slots[0].clip = s.live.makeClip({
+    name: "kick8", length: 32, color_index: 69, notes: [[0, 0.5, 36, 100]],
+  });
+  var st = s.bridge.raw({ op: "get_state" }).result;
+  assert.equal(st.tracks[0].source_loop.kind, "session");
+  assert.equal(st.tracks[0].source_loop.color_index, 69);
+  assert.equal(st.tracks[0].source_loop.length, 32);
+  var r = s.bridge.raw({
+    op: "place_loop", track: 0, source_kind: "session", source_index: 0,
+    time: 64, length: 96, name: "Drop", color_index: 69,
+  });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(r.result.color_index, 69);
+  var arr = s.live.song.tracks[0].arrangement_clips;
+  assert.equal(arr.length, 1);
+  assert.equal(arr[0].start_time, 64);
+  assert.equal(arr[0].length, 96);
+  assert.equal(arr[0].color_index, 69);
+  assert.equal(arr[0].name, "Drop");
+  assert.equal(arr[0].looping, 1);
+  assert.deepEqual(arr[0].notes[0], [0, 0.5, 36, 100]);
+  assert.equal(s.live.song.tracks[0].clip_slots[0].clip.name, "kick8", "Quell-Loop bleibt");
 });
 
 test("set_locator legt an, benennt und stellt Song-Position wieder her", function () {

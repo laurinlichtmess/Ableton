@@ -10,11 +10,14 @@ function setup(opts) {
   opts = opts || {};
   var live = new FakeLive();
   live.addScene();
-  live.addTrack("Drums", true);
-  live.addTrack("Bass", true);
-  live.addTrack("Lead Synth", true);
+  var drums = live.addTrack("Drums", true);
+  var bass = live.addTrack("Bass", true);
+  var lead = live.addTrack("Lead Synth", true);
   live.addTrack("Reference", false);
-  live.song.tracks[0].clip_slots[0].clip = live.reg({ _type: "Clip", name: "user clip", length: 4, envelopes: {} });
+  // Vorhandene ~8-Takt-Loops (Session) – Apply dupliziert diese, erzeugt keine leeren Clips.
+  drums.clip_slots[0].clip = live.makeClip({ name: "user clip", length: 32, color_index: 69, notes: [[0, 1, 36, 100]] });
+  bass.clip_slots[0].clip = live.makeClip({ name: "bass loop", length: 32, color_index: 26, notes: [[0, 1, 40, 100]] });
+  lead.clip_slots[0].clip = live.makeClip({ name: "lead loop", length: 32, color_index: 14, notes: [[0, 1, 60, 100]] });
   var bridge = live.loadBridge();
   var ui = { statuses: [], summaries: [], menus: {} };
   var remoteCalls = [];
@@ -107,21 +110,26 @@ test("Anwenden baut Tempo, Locators, Geraete, Clips mit Envelopes im Arrangement
   var build = lead.arrangement_clips.find(function (c) { return c.name === "Build"; });
   assert.equal(build.start_time, analysis.sections[1].start_beat);
   assert.equal(build.length, analysis.sections[1].length_beats);
+  assert.equal(build.color_index, 14, "Farbe wie Original-Loop");
+  assert.ok(build.notes && build.notes.length > 0, "Inhalt vom Quell-Loop, nicht leer");
   var env = build.envelopes[Object.keys(build.envelopes)[0]];
   assert.equal(env.param.name, "Frequency");
   assert.ok(env.steps.length > 1);
   assert.ok(env.steps.every(function (st) { return st[2] >= 0 && st[2] <= 1; }), "Rohwerte im Parameterbereich");
   assert.ok(env.steps[0][2] < env.steps[env.steps.length - 1][2], "Sweep steigt");
 
-  // Die Hilfs-Szene ist wieder weg, der Clip des Users unangetastet.
+  // Die Hilfs-Szene ist wieder weg, der Session-Loop des Users unangetastet.
   assert.equal(song.scenes.length, 1);
   assert.equal(song.tracks[0].clip_slots.length, 1);
   assert.equal(song.tracks[0].clip_slots[0].clip.name, "user clip");
+  assert.equal(song.tracks[0].arrangement_clips[0].color_index, 69);
+  assert.ok(song.tracks[0].arrangement_clips[0].notes.length > 0);
   assert.equal(song.tracks[3].arrangement_clips.length, 0, "Audiospur ohne Stem bleibt leer");
 
   assert.equal(report.locators, analysis.sections.length);
   assert.ok(report.clips >= activeSynth && report.envelopes > 0);
   assert.match(s.ui.statuses.pop(), /^Fertig: /);
+  assert.ok(s.ui.summaries.pop().indexOf("vorhandene Loop") !== -1);
 });
 
 test("Ohne Remote Script: Locators und Clips trotzdem, Automation mit Hinweis uebersprungen", async function () {
@@ -181,7 +189,6 @@ test("Manuelle Zuordnung und Optionen werden beachtet", async function () {
   assert.equal(s.live.song.cue_points.length, 0);
   assert.equal(s.live.song.tempo, 120);
   assert.equal(report.clips, 0);
-  assert.ok(report.warnings.some(function (w) { return w.indexOf("Audiospur") !== -1; }));
   assert.deepEqual(s.remoteCalls.filter(function (c) { return c.cmd === "load_device"; })
     .map(function (c) { return c.track_index + ":" + c.device; }), ["3:Auto Filter"]);
 });

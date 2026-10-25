@@ -7,17 +7,22 @@
 // Operationen:
 //   ping                                   -> {live_version}
 //   get_state                              -> {tempo, signature_numerator, signature_denominator, scene_count,
-//                                              tracks:[{index,name,has_midi_input,is_foldable,devices:[{index,name,class_name}]}],
+//                                              tracks:[{index,name,has_midi_input,is_foldable,devices,source_loop}],
 //                                              cue_points:[{time,name}]}
+//                                              source_loop: erster Session- oder Arrangement-Loop (~8 Takte) oder null
 //   set_tempo {tempo}
 //   set_locator {time, name}               -> {created, name_ok}
 //   create_scene                           -> {scene_index}
 //   delete_scene {scene_index}
-//   create_clip {track, scene, length, name, color_index}
+//   create_clip {track, scene, length, name, color_index}   (Hilfs-Pfad; Apply nutzt place_loop)
 //   delete_clip {track, scene}
+//   copy_clip_to_slot {track, source_kind, source_index, dest_scene}
+//   stretch_arrangement_clip {track, time, length, color_index, name}
 //   get_params {track, device}             -> {params:[{index,name,min,max,is_quantized}]}
 //   sample_param {track, device, param, count} -> {samples:[[wert, anzeige]]}
 //   duplicate_to_arrangement {track, scene, time}
+//   place_loop {track, source_kind, source_index, time, length, name, color_index}
+//     -> Quell-Loop (Session/Arrangement) nach Arrangement duplizieren, auf Abschnittslaenge loopen
 //
 // Clip-Envelopes schreibt das Remote Script (write_envelope): Clip.automation_envelope ist in Live 11
 // fuer Max for Live nicht freigegeben.
@@ -146,6 +151,148 @@ function findCue(song, time) {
 	return -1;
 }
 
+function clipLoopInfo(clip, kind, index) {
+	var name = str(clip, "name");
+	if (/eingefroren/i.test(name)) {
+		return null;
+	}
+	var looping = num(clip, "looping") === 1;
+	var loopStart = num(clip, "loop_start");
+	var loopEnd = num(clip, "loop_end");
+	var length = looping ? (loopEnd - loopStart) : num(clip, "length");
+	if (!(length > 0.05) || !isFinite(length)) {
+		return null;
+	}
+	var startTime = 0;
+	if (kind === "arrangement") {
+		startTime = num(clip, "start_time");
+		if (startTime > 64) {
+			return null;
+		}
+	}
+	var score = 10;
+	if (length >= 4 && length <= 64) {
+		score += 5;
+	}
+	if (length >= 16 && length <= 32) {
+		score += 3;
+	}
+	if (kind === "session") {
+		score += 20;
+	}
+	if (kind === "arrangement" && startTime <= 0.1) {
+		score += 5;
+	}
+	return {
+		kind: kind,
+		index: index,
+		length: liveNum(length, "length"),
+		color_index: Math.floor(num(clip, "color_index")),
+		name: name,
+		looping: looping,
+		loop_start: liveNum(loopStart, "loop_start"),
+		loop_end: liveNum(loopEnd, "loop_end"),
+		start_time: liveNum(startTime, "start_time"),
+		score: score
+	};
+}
+
+// Erster brauchbarer Loop: Session-Slots von vorne, sonst Arrangement-Clips nahe Beat 0.
+function findSourceLoop(trackIndex) {
+	var best = null;
+	var t = api(trackPath(trackIndex), "track");
+	var nSlots = t.getcount("clip_slots");
+	var maxSlots = Math.min(nSlots, 32);
+	for (var i = 0; i < maxSlots; i++) {
+		var slot = api(slotPath(trackIndex, i), "slot");
+		if (num(slot, "has_clip") !== 1) {
+			continue;
+		}
+		var clip = api(slotPath(trackIndex, i) + " clip", "clip");
+		var info = clipLoopInfo(clip, "session", i);
+		if (!info) {
+			continue;
+		}
+		if (!best || info.score > best.score) {
+			best = info;
+		}
+		if (i === 0 && info.score >= 15) {
+			break;
+		}
+	}
+	if (best && best.kind === "session") {
+		return best;
+	}
+	var nArr = t.getcount("arrangement_clips");
+	for (var j = 0; j < nArr; j++) {
+		var aclip = api(trackPath(trackIndex) + " arrangement_clips " + j, "aclip");
+		var info2 = clipLoopInfo(aclip, "arrangement", j);
+		if (!info2) {
+			continue;
+		}
+		if (!best || info2.score > best.score ||
+			(best.kind === "arrangement" && info2.start_time < best.start_time && info2.score >= best.score - 2)) {
+			best = info2;
+		}
+	}
+	return best;
+}
+
+function sourceClipApi(trackIndex, kind, index) {
+	if (kind === "session") {
+		return api(slotPath(trackIndex, index) + " clip", "clip");
+	}
+	return api(trackPath(trackIndex) + " arrangement_clips " + liveIndex(index, "arrangement"), "aclip");
+}
+
+function findArrangementClipAt(trackIndex, time) {
+	var t = api(trackPath(trackIndex), "track");
+	var n = t.getcount("arrangement_clips");
+	var best = -1;
+	var bestDelta = 1e9;
+	for (var i = 0; i < n; i++) {
+		var c = api(trackPath(trackIndex) + " arrangement_clips " + i, "aclip");
+		var delta = Math.abs(num(c, "start_time") - time);
+		if (delta < bestDelta) {
+			bestDelta = delta;
+			best = i;
+		}
+	}
+	if (best < 0 || bestDelta > 0.05) {
+		return null;
+	}
+	return api(trackPath(trackIndex) + " arrangement_clips " + best, "aclip");
+}
+
+function stretchArrangementClip(clip, time, length, colorIndex, name) {
+	var loopStart = num(clip, "loop_start");
+	var loopEnd = num(clip, "loop_end");
+	var looping = num(clip, "looping") === 1;
+	var sourceLen = looping ? (loopEnd - loopStart) : num(clip, "length");
+	if (!(sourceLen > 0.05)) {
+		sourceLen = length;
+	}
+	clip.set("looping", 1);
+	if (looping) {
+		clip.set("loop_start", liveNum(loopStart, "loop_start"));
+		clip.set("loop_end", liveNum(loopEnd, "loop_end"));
+	} else {
+		clip.set("loop_start", 0);
+		clip.set("loop_end", liveNum(sourceLen, "loop_end"));
+	}
+	try {
+		clip.set("end_time", liveNum(time + length, "end_time"));
+	} catch (e1) {
+		clip.set("end_marker", liveNum(length, "end_marker"));
+	}
+	if (colorIndex !== null && colorIndex !== undefined && !isNaN(Number(colorIndex))) {
+		clip.set("color_index", liveIndex(colorIndex, "color_index"));
+	}
+	if (name !== null && name !== undefined && String(name).length) {
+		setLiveName(clip, name);
+	}
+}
+
 var HANDLERS = {
 	ping: function () {
 		var app = api("live_app", "app");
@@ -163,12 +310,28 @@ var HANDLERS = {
 				name: str(t, "name"),
 				has_midi_input: num(t, "has_midi_input") === 1,
 				is_foldable: num(t, "is_foldable") === 1,
-				devices: []
+				devices: [],
+				source_loop: null
 			};
 			var nd = t.getcount("devices");
 			for (var j = 0; j < nd; j++) {
 				var d = api(trackPath(i) + " devices " + j, "device");
 				info.devices.push({ index: j, name: str(d, "name"), class_name: str(d, "class_name") });
+			}
+			if (!info.is_foldable) {
+				var src = findSourceLoop(i);
+				if (src) {
+					info.source_loop = {
+						kind: src.kind,
+						index: src.index,
+						length: src.length,
+						color_index: src.color_index,
+						name: src.name,
+						looping: src.looping,
+						loop_start: src.loop_start,
+						loop_end: src.loop_end
+					};
+				}
 			}
 			tracks.push(info);
 		}
@@ -294,5 +457,69 @@ var HANDLERS = {
 		var clip = api(slotPath(req.track, req.scene) + " clip", "clip");
 		api(trackPath(req.track), "track").call("duplicate_clip_to_arrangement", "id", Number(clip.id), liveNum(req.time, "time"));
 		return {};
+	},
+
+	// Session-Quellclip in einen anderen Slot kopieren (Hilfs-Szene fuer Automation).
+	copy_clip_to_slot: function (req) {
+		var trackIdx = liveIndex(req.track, "track");
+		var destScene = liveIndex(req.dest_scene, "dest_scene");
+		if (req.source_kind !== "session") {
+			throw new Error("copy_clip_to_slot braucht eine Session-Quelle");
+		}
+		var srcSlot = api(slotPath(trackIdx, req.source_index), "slot");
+		if (num(srcSlot, "has_clip") !== 1) {
+			throw new Error("Quell-Slot ist leer");
+		}
+		var destSlot = api(slotPath(trackIdx, destScene), "destslot");
+		srcSlot.call("duplicate_clip_to", "id", Number(destSlot.id));
+		var clip = api(slotPath(trackIdx, destScene) + " clip", "clip");
+		return {
+			color_index: Math.floor(num(clip, "color_index")),
+			length: liveNum(num(clip, "length"), "length"),
+			name: str(clip, "name")
+		};
+	},
+
+	stretch_arrangement_clip: function (req) {
+		var time = liveNum(req.time, "time");
+		var length = liveNum(req.length, "length");
+		if (!(length > 0)) {
+			throw new Error("Ungueltige Abschnittslaenge: " + req.length);
+		}
+		var clip = findArrangementClipAt(req.track, time);
+		if (!clip) {
+			throw new Error("Kein Arrangement-Clip bei Beat " + time);
+		}
+		stretchArrangementClip(clip, time, length, req.color_index, req.name);
+		return { start_time: num(clip, "start_time"), color_index: Math.floor(num(clip, "color_index")) };
+	},
+
+	// Quell-Loop (Session oder Arrangement) an section-Zeit legen und auf Abschnittslaenge loopen.
+	place_loop: function (req) {
+		var trackIdx = liveIndex(req.track, "track");
+		var time = liveNum(req.time, "time");
+		var length = liveNum(req.length, "length");
+		if (!(length > 0)) {
+			throw new Error("Ungueltige Abschnittslaenge: " + req.length);
+		}
+		var kind = req.source_kind === "arrangement" ? "arrangement" : "session";
+		var source = sourceClipApi(trackIdx, kind, req.source_index);
+		var color = req.color_index !== null && req.color_index !== undefined
+			? liveIndex(req.color_index, "color_index")
+			: Math.floor(num(source, "color_index"));
+		api(trackPath(trackIdx), "track").call(
+			"duplicate_clip_to_arrangement", "id", Number(source.id), time
+		);
+		var placed = findArrangementClipAt(trackIdx, time);
+		if (!placed) {
+			throw new Error("Loop konnte nicht ins Arrangement gelegt werden (Beat " + time + ")");
+		}
+		stretchArrangementClip(placed, time, length, color, req.name);
+		return {
+			start_time: num(placed, "start_time"),
+			color_index: Math.floor(num(placed, "color_index")),
+			source_kind: kind,
+			source_index: liveIndex(req.source_index, "source")
+		};
 	}
 };

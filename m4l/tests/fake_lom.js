@@ -31,6 +31,26 @@ FakeLive.prototype.addScene = function () {
   self.song.tracks.forEach(function (t) { t.clip_slots.push(self.reg({ _type: "ClipSlot", _track: t, clip: null })); });
 };
 
+FakeLive.prototype.makeClip = function (opts) {
+  opts = opts || {};
+  var length = opts.length != null ? opts.length : 32;
+  return this.reg({
+    _type: "Clip",
+    name: opts.name != null ? opts.name : "loop",
+    length: length,
+    color_index: opts.color_index != null ? opts.color_index : 14,
+    looping: opts.looping != null ? opts.looping : 1,
+    loop_start: opts.loop_start != null ? opts.loop_start : 0,
+    loop_end: opts.loop_end != null ? opts.loop_end : length,
+    start_time: opts.start_time != null ? opts.start_time : 0,
+    end_time: opts.end_time != null ? opts.end_time : (opts.start_time || 0) + length,
+    end_marker: opts.end_marker != null ? opts.end_marker : length,
+    start_marker: 0,
+    notes: opts.notes != null ? opts.notes : [[0, 1, 60, 100]],
+    envelopes: opts.envelopes || {},
+  });
+};
+
 FakeLive.prototype.addTrack = function (name, midi, opts) {
   var self = this;
   var t = self.reg({ _type: "Track", name: name, has_midi_input: midi ? 1 : 0, is_foldable: (opts && opts.group) ? 1 : 0,
@@ -93,6 +113,34 @@ FakeLive.prototype.unpackArgs = function (args) {
 
 function ref(obj) { return ["id", obj ? obj._id : 0]; }
 
+function cloneEnvelopes(clip) {
+  var envs = {};
+  Object.keys(clip.envelopes || {}).forEach(function (k) {
+    envs[k] = { param: clip.envelopes[k].param, steps: clip.envelopes[k].steps.slice() };
+  });
+  return envs;
+}
+
+FakeLive.prototype.copyClip = function (clip, overrides) {
+  overrides = overrides || {};
+  var length = overrides.length != null ? overrides.length : clip.length;
+  return this.reg({
+    _type: "Clip",
+    name: overrides.name != null ? overrides.name : clip.name,
+    length: length,
+    color_index: overrides.color_index != null ? overrides.color_index : clip.color_index,
+    looping: overrides.looping != null ? overrides.looping : clip.looping,
+    loop_start: overrides.loop_start != null ? overrides.loop_start : clip.loop_start,
+    loop_end: overrides.loop_end != null ? overrides.loop_end : clip.loop_end,
+    start_time: overrides.start_time != null ? overrides.start_time : 0,
+    end_time: overrides.end_time != null ? overrides.end_time : (overrides.start_time || 0) + length,
+    end_marker: overrides.end_marker != null ? overrides.end_marker : length,
+    start_marker: 0,
+    notes: (clip.notes || []).map(function (n) { return n.slice(); }),
+    envelopes: cloneEnvelopes(clip),
+  });
+};
+
 FakeLive.prototype.invoke = function (obj, fn, args) {
   var self = this;
   var song = self.song;
@@ -119,19 +167,27 @@ FakeLive.prototype.invoke = function (obj, fn, args) {
     case "ClipSlot.create_clip": {
       if (!obj._track.has_midi_input) throw new Error("Can only create clips on MIDI tracks");
       if (obj.clip) throw new Error("Clip slot already has a clip");
-      obj.clip = self.reg({ _type: "Clip", name: "", length: Number(args[0]), color_index: 0, envelopes: {} });
+      obj.clip = self.makeClip({ name: "", length: Number(args[0]), color_index: 0, notes: [] });
       return undefined;
     }
     case "ClipSlot.delete_clip": obj.clip = null; return undefined;
+    case "ClipSlot.duplicate_clip_to": {
+      var dest = args[0];
+      if (!obj.clip) throw new Error("Quell-Slot ist leer");
+      dest.clip = self.copyClip(obj.clip);
+      return undefined;
+    }
     case "DeviceParameter.str_for_value": return obj.show(Number(args[0]));
     case "Track.duplicate_clip_to_arrangement": {
       var clip = args[0];
-      var envs = {};
-      Object.keys(clip.envelopes).forEach(function (k) {
-        envs[k] = { param: clip.envelopes[k].param, steps: clip.envelopes[k].steps.slice() };
-      });
-      obj.arrangement_clips.push({ name: clip.name, start_time: Number(args[1]), length: clip.length,
-        color_index: clip.color_index, envelopes: envs });
+      var start = Number(args[1]);
+      var loopLen = clip.looping ? (clip.loop_end - clip.loop_start) : clip.length;
+      obj.arrangement_clips.push(self.copyClip(clip, {
+        start_time: start,
+        end_time: start + loopLen,
+        length: loopLen,
+        end_marker: loopLen,
+      }));
       return undefined;
     }
     default: throw new Error("'" + obj._type + "' object has no attribute '" + fn + "'");
@@ -193,6 +249,14 @@ FakeLive.prototype.LiveAPIClass = function () {
     if (this._obj[prop] === undefined) throw new Error("FakeLive: unbekannte Eigenschaft " + prop);
     live.calls.push([this._obj._type, "set", prop, value]);
     this._obj[prop] = value;
+    if (prop === "end_time" && this._obj.start_time != null) {
+      this._obj.length = Number(value) - Number(this._obj.start_time);
+      this._obj.end_marker = this._obj.length;
+    }
+    if (prop === "end_marker") {
+      this._obj.length = Number(value);
+      if (this._obj.start_time != null) this._obj.end_time = this._obj.start_time + Number(value);
+    }
   };
   LiveAPI.prototype.getcount = function (child) {
     return (this._obj[child] || []).length;
@@ -213,28 +277,30 @@ FakeLive.prototype.loadBridge = function () {
     LiveAPI: live.LiveAPIClass(),
     // outlet(index, message, ...) wie in Max
     outlet: function () { outputs.push(Array.prototype.slice.call(arguments, 1)); },
-    post: function () {},
+    autowatch: 0, inlets: 1, outlets: 1,
     arrayfromargs: function (a) { return Array.prototype.slice.call(a); },
-    JSON: JSON, Math: Math, String: String, Number: Number, Error: Error, Array: Array,
   };
-  vm.createContext(sandbox);
-  var src = fs.readFileSync(path.join(__dirname, "..", "js", "live_bridge.js"), "utf8");
-  vm.runInContext(src, sandbox, { filename: "live_bridge.js" });
-  var bridge = {
-    sandbox: sandbox,
-    outputs: outputs,
-    raw: function (op) {
-      sandbox.lom(JSON.stringify(op));
-      var out = outputs.pop();
-      if (out[0] !== "lom_result") throw new Error("unerwartete Ausgabe " + out[0]);
-      return JSON.parse(out[1]);
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname, "..", "js", "live_bridge.js"), "utf8"), sandbox, {
+    filename: "live_bridge.js",
+  });
+  function raw(op) {
+    outputs.length = 0;
+    sandbox.lom(typeof op === "string" ? op : JSON.stringify(op));
+    if (!outputs.length) throw new Error("live_bridge: keine Antwort");
+    return JSON.parse(outputs[0][1]);
+  }
+  return {
+    raw: raw,
+    lom: function (op) {
+      return Promise.resolve().then(function () {
+        var r = raw(Object.assign({ req: 1 }, op));
+        if (!r.ok) throw new Error(r.error);
+        return r.result;
+      });
     },
+    outputs: outputs,
+    sandbox: sandbox,
   };
-  bridge.lom = function (op) {
-    var res = bridge.raw(op);
-    return res.ok ? Promise.resolve(res.result) : Promise.reject(new Error(res.error));
-  };
-  return bridge;
 };
 
 module.exports = { FakeLive: FakeLive };

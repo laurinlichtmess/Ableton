@@ -219,10 +219,9 @@ function trackByIndex(state, idx) {
   return null;
 }
 
-var GROUP_COLORS = { A: 14, B: 26, C: 5, D: 19, E: 9, F: 22 };
-
 // Plan aus Analyse + Live-Zustand + Optionen. Enthaelt Werte noch in Hz/dB; die Umrechnung in
 // Parameter-Rohwerte passiert beim Ausfuehren (braucht str_for_value aus Live).
+// Arrangement: vorhandene ~8-Takt-Loops der Spur werden pro aktivem Songteil platziert (keine leeren Clips).
 function buildPlan(analysis, state, options, mapping) {
   var opts = Object.assign({ build_arrangement: true, apply_automation: true, set_tempo: true }, options || {});
   var sections = analysis.sections || [];
@@ -236,7 +235,7 @@ function buildPlan(analysis, state, options, mapping) {
     if (idx === null || idx === undefined) return;
     var track = trackByIndex(state, idx);
     if (!track) {
-      plan.warnings.push("Spur " + (idx + 1) + " fuer " + stem.name + " existiert nicht mehr.");
+      plan.warnings.push("Spur " + (idx + 1) + " fuer " + (STEM_LABELS[stem.name] || stem.name) + " existiert nicht mehr.");
       return;
     }
     var automation = opts.apply_automation ? (stem.automation || []) : [];
@@ -246,25 +245,43 @@ function buildPlan(analysis, state, options, mapping) {
         plan.devices.push({ track: idx, device: a.device, class_name: cls, present: !!findDevice(track, cls) });
       }
     });
-    if (!track.has_midi_input && (opts.build_arrangement || automation.length)) {
-      plan.warnings.push("'" + track.name + "' (" + stem.name + ") ist eine Audiospur: Live 11 legt Clip-Geruest " +
-        "nur auf MIDI-Spuren an. Bitte im Device eine MIDI-Spur waehlen (Effekte werden trotzdem eingefuegt).");
-      return;
+    var source = track.source_loop || null;
+    var label = STEM_LABELS[stem.name] || stem.name;
+    if (opts.build_arrangement && !source) {
+      plan.warnings.push("'" + track.name + "' (" + label + "): kein Loop am Spuranfang gefunden " +
+        "(Session-Slot oder Arrangement-Clip bei Takt 1). Spur ohne Arrangement-Clips.");
     }
     var clips = [];
-    sections.forEach(function (s, i) {
-      var envs = automation.map(function (a) {
-        return { target: a.target, device: a.device, class_name: a.class_name || DEVICE_CLASS[a.device],
-          parameter: a.parameter, unit: a.unit, steps: sliceAutomation(a.points, s.start_beat, s.length_beats) };
+    if (opts.build_arrangement && source) {
+      sections.forEach(function (s, i) {
+        var active = !stem.active_sections || stem.active_sections[i] !== false;
+        if (!active) return;
+        var envs = automation.map(function (a) {
+          return { target: a.target, device: a.device, class_name: a.class_name || DEVICE_CLASS[a.device],
+            parameter: a.parameter, unit: a.unit, steps: sliceAutomation(a.points, s.start_beat, s.length_beats) };
+        });
+        clips.push({
+          section: i,
+          start: s.start_beat,
+          length: s.length_beats,
+          name: s.label,
+          color_index: source.color_index,
+          source_kind: source.kind,
+          source_index: source.index,
+          source_length: source.length,
+          envelopes: envs,
+        });
       });
-      var active = !stem.active_sections || stem.active_sections[i] !== false;
-      var needed = (opts.build_arrangement && active) ||
-        envs.some(function (e) { return !isNeutral(e.target, e.steps); });
-      if (!needed) return;
-      clips.push({ section: i, start: s.start_beat, length: s.length_beats, name: s.label,
-        color_index: GROUP_COLORS[s.group] !== undefined ? GROUP_COLORS[s.group] : null, envelopes: envs });
-    });
-    if (clips.length) plan.tracks.push({ track: idx, name: track.name, stem: stem.name, clips: clips });
+    }
+    if (clips.length) {
+      plan.tracks.push({
+        track: idx,
+        name: track.name,
+        stem: stem.name,
+        source_loop: source,
+        clips: clips,
+      });
+    }
   });
   return plan;
 }
@@ -292,13 +309,18 @@ function formatSummary(analysis, mapping, state) {
     lines.push("  T" + (s.start_bar + 1) + "-" + s.end_bar + "  " + s.label + " [" + s.group + "]" + el);
   });
   if (mapping) {
-    lines.push("Zuordnung:");
+    lines.push("Zuordnung (Loop = vorhandener ~8-Takt-Clip am Spuranfang):");
     var absent = {};
     (analysis.stems || []).forEach(function (s) { if (s.present === false) absent[s.name] = true; });
     Object.keys(mapping).forEach(function (stem) {
       var tr = mapping[stem] === null ? null : trackByIndex(state, mapping[stem]);
       var label = STEM_LABELS[stem] || stem;
-      lines.push("  " + label + " -> " + (tr ? menuItemForTrack(tr) : "-") + (absent[stem] ? " (stumm)" : ""));
+      var loop = tr && tr.source_loop
+        ? " [Loop " + tr.source_loop.kind + ", " + Math.round(tr.source_loop.length) + " Beats, Farbe " +
+          tr.source_loop.color_index + "]"
+        : (tr ? " [kein Loop]" : "");
+      lines.push("  " + label + " -> " + (tr ? menuItemForTrack(tr) : "-") + loop +
+        (absent[stem] ? " (stumm)" : ""));
     });
   }
   if ((analysis.suggested_devices || []).length) {

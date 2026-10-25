@@ -4,14 +4,17 @@ var assert = require("node:assert/strict");
 var core = require("../js/rr_core");
 var analysis = require("./fixtures/analysis.json");
 
+function loop(color) {
+  return { kind: "session", index: 0, length: 32, color_index: color, name: "loop", looping: true, loop_start: 0, loop_end: 32 };
+}
 var TRACKS = [
-  { index: 0, name: "Kick", has_midi_input: true, is_foldable: false, devices: [] },
-  { index: 1, name: "Bass", has_midi_input: true, is_foldable: false, devices: [] },
-  { index: 2, name: "Clap", has_midi_input: true, is_foldable: false, devices: [] },
-  { index: 3, name: "Group Synths", has_midi_input: true, is_foldable: true, devices: [] },
-  { index: 4, name: "Lead Synth", has_midi_input: true, is_foldable: false, devices: [{ index: 0, name: "Auto Filter", class_name: "AutoFilter" }] },
-  { index: 5, name: "Atmo Pads", has_midi_input: true, is_foldable: false, devices: [] },
-  { index: 6, name: "Lead Vox", has_midi_input: false, is_foldable: false, devices: [] },
+  { index: 0, name: "Kick", has_midi_input: true, is_foldable: false, devices: [], source_loop: loop(69) },
+  { index: 1, name: "Bass", has_midi_input: true, is_foldable: false, devices: [], source_loop: loop(26) },
+  { index: 2, name: "Clap", has_midi_input: true, is_foldable: false, devices: [], source_loop: loop(63) },
+  { index: 3, name: "Group Synths", has_midi_input: true, is_foldable: true, devices: [], source_loop: null },
+  { index: 4, name: "Lead Synth", has_midi_input: true, is_foldable: false, devices: [{ index: 0, name: "Auto Filter", class_name: "AutoFilter" }], source_loop: loop(14) },
+  { index: 5, name: "Atmo Pads", has_midi_input: true, is_foldable: false, devices: [], source_loop: loop(20) },
+  { index: 6, name: "Lead Vox", has_midi_input: false, is_foldable: false, devices: [], source_loop: loop(8) },
 ];
 
 test("toPosixPath wandelt Max-Pfade um", function () {
@@ -118,32 +121,31 @@ test("buildPlan mit echter Engine-Analyse (feine Elemente)", function () {
   var activeCount = synthStem.active_sections.filter(Boolean).length;
   assert.ok(synth.clips.length >= activeCount, "Clips fuer aktive Teile (+ ggf. Automations-Ueberhang)");
   var build = synth.clips.find(function (c) { return c.name === "Build"; });
-  if (build) {
-    var env = build.envelopes.find(function (e) { return e.target === "filter_cutoff"; });
-    if (env) {
-      assert.ok(env.steps.length > 1, "Sweep braucht mehrere Schritte");
-      var total = env.steps.reduce(function (s, x) { return s + x[1]; }, 0);
-      assert.ok(Math.abs(total - build.length) < 1e-6);
-    }
-  }
+  assert.ok(build, "Build-Clip geplant");
+  assert.equal(build.color_index, 14, "Farbe vom Quell-Loop");
+  assert.equal(build.source_kind, "session");
+  var env = build.envelopes.find(function (e) { return e.target === "filter_cutoff"; });
+  assert.ok(env && env.steps.length > 1, "Sweep braucht mehrere Schritte");
+  var total = env.steps.reduce(function (s, x) { return s + x[1]; }, 0);
+  assert.ok(Math.abs(total - build.length) < 1e-6);
   assert.ok(plan.devices.some(function (d) { return d.track === 4 && d.class_name === "AutoFilter"; }));
   var stats = core.planStats(plan);
   assert.equal(stats.locators, analysis.sections.length);
   assert.ok(stats.clips > 0);
 });
 
-test("buildPlan: nur Automation -> nur nicht-neutrale Abschnitte; Audiospuren werden gemeldet", function () {
+test("buildPlan: ohne Arrangement-Option keine Clips; fehlender Loop wird gemeldet", function () {
   var state = { tracks: TRACKS };
   var plan = core.buildPlan(analysis, state, { build_arrangement: false }, { synth: 4, bass: 6 });
   assert.equal(plan.locators.length, 0);
   assert.equal(plan.tempo, null);
-  var synth = plan.tracks.find(function (t) { return t.stem === "synth"; });
-  assert.ok(synth.clips.length >= 1 && synth.clips.length < analysis.sections.length);
-  assert.ok(synth.clips.every(function (c) {
-    return c.envelopes.some(function (e) { return !core.isNeutral(e.target, e.steps); });
-  }));
-  assert.ok(!plan.tracks.some(function (t) { return t.track === 6; }));
-  assert.ok(plan.warnings.some(function (w) { return w.indexOf("Audiospur") !== -1; }));
+  assert.equal(plan.tracks.length, 0);
+  assert.ok(plan.devices.some(function (d) { return d.track === 4; }));
+  var noLoop = JSON.parse(JSON.stringify(TRACKS));
+  noLoop[0].source_loop = null;
+  var plan2 = core.buildPlan(analysis, { tracks: noLoop }, {}, { kick: 0 });
+  assert.ok(plan2.warnings.some(function (w) { return /kein Loop/.test(w); }));
+  assert.ok(!plan2.tracks.some(function (t) { return t.stem === "kick"; }));
 });
 
 test("buildPlan: ohne Automation werden keine Geraete geplant", function () {
@@ -157,11 +159,13 @@ test("formatSummary enthaelt Songteile, Zuordnung und Vorschlaege", function () 
   assert.ok(text.indexOf("Tempo 128") === 0);
   assert.ok(text.indexOf("Build") !== -1);
   assert.ok(text.indexOf("Kick -> 1: Kick") !== -1);
+  assert.ok(text.indexOf("[Loop session") !== -1);
   assert.ok(text.indexOf("Synth -> -") !== -1);
   var silent = JSON.parse(JSON.stringify(analysis));
   var vox = silent.stems.find(function (s) { return s.name === "vocals"; });
   if (vox) vox.present = false;
-  assert.ok(core.formatSummary(silent, { vocals: 6 }, { tracks: TRACKS }).indexOf("Vocals -> 7: Lead Vox (stumm)") !== -1);
+  assert.ok(core.formatSummary(silent, { vocals: 6 }, { tracks: TRACKS }).indexOf("Vocals -> 7: Lead Vox") !== -1);
+  assert.ok(core.formatSummary(silent, { vocals: 6 }, { tracks: TRACKS }).indexOf("(stumm)") !== -1);
 });
 
 test("STEMS enthaelt die feinen Live-Track-Namen", function () {

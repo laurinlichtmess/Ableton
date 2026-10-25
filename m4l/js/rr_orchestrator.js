@@ -250,18 +250,28 @@ Orchestrator.prototype.apply = function () {
       return self._resolveTargets(plan, report);
     }).then(function (targets) {
       if (!plan.tracks.length) return null;
-      return attempt(report, "Hilfs-Szene", function () {
-        return d.lom({ op: "create_scene" }).then(function (res) {
-          scene = res.scene_index;
-          return plan.tracks.reduce(function (p, t) {
-            return t.clips.reduce(function (p2, c) {
-              return p2.then(function () {
-                self.status("Clip '" + c.name + "' auf '" + t.name + "' ...");
-                return self._buildClip(t, c, scene, targets, report);
-              });
-            }, p);
-          }, Promise.resolve());
+      var needsHelper = plan.tracks.some(function (t) {
+        return t.source_loop && t.source_loop.kind === "session" && (t.clips || []).some(function (c) {
+          return (c.envelopes || []).some(function (e) {
+            return !!targets[t.track + "|" + e.class_name + "|" + e.parameter] &&
+              !core.isNeutral(e.target, e.steps);
+          });
         });
+      });
+      var start = needsHelper
+        ? attempt(report, "Hilfs-Szene", function () {
+          return d.lom({ op: "create_scene" }).then(function (res) { scene = res.scene_index; });
+        })
+        : Promise.resolve();
+      return start.then(function () {
+        return plan.tracks.reduce(function (p, t) {
+          return t.clips.reduce(function (p2, c) {
+            return p2.then(function () {
+              self.status("Loop '" + c.name + "' auf '" + t.name + "' ...");
+              return self._buildClip(t, c, scene, targets, report);
+            });
+          }, p);
+        }, Promise.resolve());
       });
     }).then(function () {
       return self._finish(scene, report);
@@ -285,30 +295,61 @@ Orchestrator.prototype._writeEnvelope = function (report, t, scene, target, step
   }, Promise.resolve());
 };
 
+// Vorhandenen Loop der Spur an die Abschnittsposition legen (Inhalt + Farbe), optional mit Automation.
 Orchestrator.prototype._buildClip = function (t, c, scene, targets, report) {
   var self = this;
   var d = self.deps;
-  var label = "Clip '" + c.name + "' auf '" + t.name + "'";
-  return d.lom({ op: "create_clip", track: t.track, scene: scene, length: c.length, name: c.name,
-    color_index: c.color_index }).then(function () {
-    return c.envelopes.reduce(function (p, e) {
-      var target = targets[t.track + "|" + e.class_name + "|" + e.parameter];
-      if (!target) return p;
-      var steps = e.steps.map(function (s) { return [s[0], s[1], target.toRaw(s[2])]; });
-      return p.then(function () {
-        if (report.remote_down) return null;
-        return attempt(report, label + ", Automation " + e.device + "/" + e.parameter, function () {
-          return self._writeEnvelope(report, t, scene, target, steps).then(function () { report.envelopes++; });
+  var label = "Loop '" + c.name + "' auf '" + t.name + "'";
+  var source = t.source_loop;
+  if (!source || c.source_kind == null) {
+    report.warnings.push(label + ": kein Quell-Loop.");
+    return Promise.resolve();
+  }
+  var wantEnv = (c.envelopes || []).some(function (e) {
+    var target = targets[t.track + "|" + e.class_name + "|" + e.parameter];
+    return !!target && !core.isNeutral(e.target, e.steps);
+  });
+  var useHelper = wantEnv && source.kind === "session" && scene !== null && scene !== undefined;
+
+  var place = useHelper
+    ? d.lom({
+      op: "copy_clip_to_slot", track: t.track, source_kind: "session",
+      source_index: source.index, dest_scene: scene,
+    }).then(function () {
+      return c.envelopes.reduce(function (p, e) {
+        var target = targets[t.track + "|" + e.class_name + "|" + e.parameter];
+        if (!target || core.isNeutral(e.target, e.steps)) return p;
+        var steps = e.steps.map(function (s) { return [s[0], s[1], target.toRaw(s[2])]; });
+        return p.then(function () {
+          if (report.remote_down) return null;
+          return attempt(report, label + ", Automation " + e.device + "/" + e.parameter, function () {
+            return self._writeEnvelope(report, t, scene, target, steps).then(function () { report.envelopes++; });
+          });
         });
-      });
-    }, Promise.resolve()).then(function () {
+      }, Promise.resolve());
+    }).then(function () {
       return d.lom({ op: "duplicate_to_arrangement", track: t.track, scene: scene, time: c.start });
     }).then(function () {
-      report.clips++;
+      return d.lom({
+        op: "stretch_arrangement_clip", track: t.track, time: c.start, length: c.length,
+        color_index: c.color_index, name: c.name,
+      });
+    })
+    : d.lom({
+      op: "place_loop", track: t.track, source_kind: source.kind, source_index: source.index,
+      time: c.start, length: c.length, name: c.name, color_index: c.color_index,
+    }).then(function () {
+      if (wantEnv && source.kind !== "session") {
+        report.warnings.push(label + ": Automation uebersprungen (Quelle nur im Arrangement, kein Session-Slot).");
+      }
     });
+
+  return place.then(function () {
+    report.clips++;
   }).catch(function (err) {
     report.warnings.push(label + ": " + message(err));
   }).then(function () {
+    if (!useHelper) return null;
     return attempt(report, label + " (Aufraeumen)", function () {
       return d.lom({ op: "delete_clip", track: t.track, scene: scene });
     });
@@ -333,9 +374,9 @@ Orchestrator.prototype._finish = function (scene, report) {
     self.status(text);
     var summary = core.formatSummary(self.analysis, self.mapping(), self.state);
     if (report.clips > 0) {
-      summary += "\n\nHinweis: Die MIDI-Clips sind absichtlich leer (kein Noteninhalt) – sie tragen " +
-        "das Songteil-Geruest. Automationen liegen nach dem Duplizieren in den Arrangement-Automationsspuren " +
-        "(Spur oeffnen / Automation einblenden), nicht als Noten im Clip.";
+      summary += "\n\nHinweis: Pro Songteil wurde der vorhandene Loop der Spur (Session/Arrangement am Anfang) " +
+        "dupliziert und auf die Abschnittslaenge geloopt – Farbe wie der Original-Loop. " +
+        "Automationen liegen in den Arrangement-Automationsspuren.";
     }
     if (report.warnings.length) summary += "\n\nHinweise beim Anwenden:\n  " + report.warnings.join("\n  ");
     self.deps.ui.summary(summary);
