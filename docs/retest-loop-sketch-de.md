@@ -1,39 +1,39 @@
-# Retest: Loop Sketch (MVP)
+# Retest: Loop Sketch (Abschnitts-Clips, 145 BPM)
 
-Branch/PR: `cursor/loop-sketch-mvp-06d9`
+Branch: `cursor/loop-sketch-section-clips-27b4` (Fix auf Loop-Sketch-MVP).  
+Nach dem Fix: **ein Clip pro aktiver Region** (8-Takt-Loop gelooppt), **nicht** Dutzende identische 8-Bar-Kopien. Tempo immer **145**.
 
-## Cloud / ohne Live
+## Vor dem Test (Mac)
 
-```bash
-node --test m4l/tests/ls_*.test.js
-node m4l/tests/dry_loop_sketch.js
-python3 -m pytest tests/test_installer.py m4l/tests/test_ls_device.py -q
-```
+1. Repo aktualisieren / Branch auschecken, dann:
+   ```bash
+   cd ~/Documents/Ableton-Reference-Rebuilder
+   ./install.sh
+   ```
+2. **Ableton Live vollständig beenden** (Cmd+Q) und neu öffnen — sonst bleibt altes JS im Speicher.
 
-Erwartung Dry: `DRY OK — loop-sketch-templates+scene1-tiles+locators+colors`
+## Live 11 — Schritte
 
-## Live 11 (Mac)
+1. **Kopie** von CursorTest (oder leeres Set) — Musik-Projekt nicht anfassen.
+2. Tempo darf egal sein; **To Arr setzt 145**.
+3. In **Session-Szene 1** je Spur einen **ganzen ~8-Takt-Loop** (MIDI oder Audio) legen — nicht kleinere Schnipsel.
+4. Device **Loop Sketch** laden (nicht „Reference Rebuilder“):  
+   User Library → Presets → Audio Effects → Max Audio Effect → **Loop Sketch**.
+5. Template z. B. **Techno — Techno Warehouse** wählen.
+6. **Spuren** klicken; Mapping prüfen (Kick/Bass/Hats/… nach Namen); ggf. Menüs.
+7. Arrangement leeren (oder Undo bereithalten), dann **To Arr**.
 
-1. `./install.sh` → Live **neu starten**.
-2. Optional Control Surface **LoopSketch** (nicht nötig für To Arr).
-3. CursorTest-Kopie oder leeres Set: MIDI-Spuren z. B. `Kick`, `Bass`, `Hats`, `Perc`, `Synth`, `Pad`, `FX`.
-4. In **Session-Szene 1** je Spur einen ~8-Takt-Loop (mit Noten bzw. Audio) ablegen; Farben merken.
-5. Device **LoopSketch** auf eine Spur ziehen.
-6. Template **Techno — Techno Warehouse** (oder Peak / Hypnotic) wählen.
-7. Mapping prüfen (Auto nach Namen); ggf. Menüs anpassen; **Spuren** klicken.
-8. Arrangement leeren bzw. speichern, dann **To Arr**.
-9. Prüfen:
-   - Locators an Intro/Build/Drop/Break/…
-   - Kick **ohne** Clips im Break (Presence `false`)
-   - Aktive Regionen: Loop gekachelt, **gleiche Farbe**, Noten/Audio hörbar
-   - Volle Template-Länge (Warehouse = 128 Takte)
-10. House Classic / Tech House Groove kurz wiederholen (andere Presence).
+## Was du sehen musst (DoD)
 
-## Fehlerzeichen
+| Check | Erwartung |
+|--------|-----------|
+| Tempo | Song-Tempo **145** |
+| Locators | Intro, Build, Drop_A, Break, Drop_B, Outro (Namen ggf. mit `_`) über volle Template-Länge (~128 Takte Warehouse) |
+| **Keine 20×-Kopie** | Pro Spur nur **wenige lange Clips** (z. B. Kick ≈ **2** Clips), nicht 14–20 kurze identische 8-Bar-Clips hintereinander |
+| Loop-Brace | Jeder Clip: Länge = aktive Region (z. B. 64 Takte); **Loop-Klammer = 8 Takte** (Quelle loopt) |
+| Arrangement | Kick **ohne** Clips im Break; Bass/Perc nur in Drops; Hats durchgehend → **unterschiedliche** Spuren = echte Struktur |
+| Inhalt | Farbe + Noten/Audio der Session-Szene-1-Loops erhalten |
 
-| Symptom | Check |
-|--------|--------|
-| „kein Clip in Session-Szene 1“ | Loop wirklich in der **ersten** Session-Zeile? |
-| Keine Locators | Live-API / Device-JS neben `.amxd`? Max-Konsole |
-| Leere MIDI-Clips | Quellclip hat Noten? (Audio: `note_count` = −1 ok) |
-| Falsche Spur | Role-Menü / **Spuren** erneut |
+Wenn wieder „alles 20× kopiert“ aussieht: Live wirklich neu gestartet? Richtiges Device (**Loop Sketch**)? Install von diesem Branch?
+
+Optional: Control Surface **LoopSketch**. Keine Engine/Demucs nötig.

@@ -10,7 +10,7 @@ function Orchestrator(deps) {
   this.template = this.templates.length ? this.templates[0] : null;
   this.state = null;
   this.overrides = {};
-  this.options = { set_tempo: false };
+  this.options = { set_tempo: true }; // immer 145 BPM beim To Arr
   this.busy = false;
   this.lastPlan = null;
   this.lastReport = null;
@@ -128,11 +128,12 @@ Orchestrator.prototype.toArr = function () {
       if (!stats.clips) {
         throw new Error("Keine Clips geplant. Mapping und Session-Szene-1-Loops pruefen.");
       }
-      self.status("To Arr: " + stats.tracks + " Spuren, " + stats.clips + " Clips ...");
+      self.status("To Arr: " + stats.tracks + " Spuren, " + stats.clips + " Abschnitts-Clips ...");
       var report = {
         locators: 0, clips: 0, warnings: plan.warnings.slice(),
       };
 
+      // Tempo zuerst (145), dann Locators, dann ein Clip pro aktiver Region (loopend).
       var tempoStep = plan.tempo
         ? attempt(report, "Tempo", function () {
           return d.lom({ op: "set_tempo", tempo: plan.tempo }).then(function () {
@@ -155,7 +156,9 @@ Orchestrator.prototype.toArr = function () {
         return plan.tracks.reduce(function (p, t) {
           return t.clips.reduce(function (p2, c) {
             return p2.then(function () {
-              self.status("Kachel '" + c.name + "' auf '" + t.name + "' @ " + c.start);
+              self.status("Abschnitt '" + c.name + "' auf '" + t.name + "' @ " + c.start +
+                " (" + Math.round(c.length / 4) + " Takte, Loop " +
+                Math.round((c.loop_length || 32) / 4) + " Takte)");
               var source = t.source_loop;
               return attempt(report, "Loop '" + c.name + "' auf '" + t.name + "'", function () {
                 return d.lom({
@@ -165,6 +168,7 @@ Orchestrator.prototype.toArr = function () {
                   source_index: source.index != null ? source.index : 0,
                   time: c.start,
                   length: c.length,
+                  loop_length: c.loop_length,
                   name: c.name,
                   color_index: c.color_index,
                 }).then(function () { report.clips++; });
@@ -174,12 +178,14 @@ Orchestrator.prototype.toArr = function () {
         }, Promise.resolve());
       }).then(function () {
         self.lastReport = report;
-        var text = "Fertig: " + report.locators + " Locators, " + report.clips + " Clips" +
+        var text = "Fertig: " + report.locators + " Locators, " + report.clips + " Abschnitts-Clips" +
           (report.tempo ? ", Tempo " + report.tempo : "") +
           (report.warnings.length ? " — " + report.warnings.length + " Hinweis(e)" : "");
         self.status(text);
         var summary = core.formatSummary(self.template, self.mapping(), self.state);
-        summary += "\n\nTo Arr: " + report.clips + " Kacheln aus Session-Szene 1 ueber aktive Template-Regionen.";
+        summary += "\n\nTo Arr: " + report.clips + " Abschnitts-Clips (ein Clip pro aktiver Region," +
+          " 8-Takt-Loop gelooppt) aus Session-Szene 1. Tempo " +
+          (report.tempo || core.DEFAULT_BPM) + " BPM.";
         if (report.warnings.length) {
           summary += "\n\nHinweise:\n  " + report.warnings.join("\n  ");
         }

@@ -2,7 +2,7 @@
   "id": "house-classic",
   "name": "House Classic",
   "genre": "House",
-  "bpm_hint": 124,
+  "bpm_hint": 145,
   "beats_per_bar": 4,
   "description": "Klassisches 4/4-House mit Intro, Verse, Chorus und Outro.",
   "sections": [

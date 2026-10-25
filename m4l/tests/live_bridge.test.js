@@ -41,7 +41,7 @@ test("get_state liest Spuren, Geraete und Locators", function () {
   assert.equal(s.bridge.raw({ op: "ping" }).result.live_version, "11.3.25");
 });
 
-test("place_loop dupliziert Session-Loop ins Arrangement mit Farbe und Laenge", function () {
+test("place_loop: ein langer Clip mit 8-Takt-Loop-Brace (keine Noten-Verdopplung)", function () {
   var s = setup();
   s.live.song.tracks[0].clip_slots[0].clip = s.live.makeClip({
     name: "kick8", length: 32, color_index: 69, notes: [[0, 0.5, 36, 100]],
@@ -52,17 +52,21 @@ test("place_loop dupliziert Session-Loop ins Arrangement mit Farbe und Laenge", 
   assert.equal(st.tracks[0].source_loop.length, 32);
   var r = s.bridge.raw({
     op: "place_loop", track: 0, source_kind: "session", source_index: 0,
-    time: 64, length: 96, name: "Drop", color_index: 69,
+    time: 64, length: 256, loop_length: 32, name: "Drop_A", color_index: 69,
   });
   assert.equal(r.ok, true, r.error);
   assert.equal(r.result.color_index, 69);
+  assert.equal(r.result.loop_length, 32);
   var arr = s.live.song.tracks[0].arrangement_clips;
   assert.equal(arr.length, 1);
   assert.equal(arr[0].start_time, 64);
-  assert.equal(arr[0].length, 96);
+  assert.equal(arr[0].length, 256);
   assert.equal(arr[0].color_index, 69);
-  assert.equal(arr[0].name, "Drop");
+  assert.equal(arr[0].name, "Drop_A");
   assert.equal(arr[0].looping, 1);
+  assert.equal(arr[0].loop_start, 0);
+  assert.equal(arr[0].loop_end, 32);
+  assert.equal(arr[0].notes.length, 1, "Noten nur einmal aus Quelle");
   assert.deepEqual(arr[0].notes[0], [0, 0.5, 36, 100]);
   assert.equal(s.live.song.tracks[0].clip_slots[0].clip.name, "kick8", "Quell-Loop bleibt");
 });
@@ -71,8 +75,9 @@ test("set_locator legt an, benennt und stellt Song-Position wieder her", functio
   var s = setup();
   s.live.song.current_song_time = 5;
   var r = s.bridge.raw({ op: "set_locator", time: 32, name: "Drop 1" });
-  assert.deepEqual(r.result, { created: true, name_ok: true, name: "Drop 1" });
-  assert.deepEqual(s.live.song.cue_points.map(function (c) { return [c.time, c.name]; }), [[32, "Drop 1"]]);
+  // Leerzeichen → Underscore (Live 11 MxDCore "Invalid syntax" vermeiden)
+  assert.deepEqual(r.result, { created: true, name_ok: true, name: "Drop_1" });
+  assert.deepEqual(s.live.song.cue_points.map(function (c) { return [c.time, c.name]; }), [[32, "Drop_1"]]);
   assert.equal(s.live.song.current_song_time, 5);
   // Zweiter Aufruf an gleicher Stelle loescht nicht (set_or_delete_cue wuerde togglen), sondern benennt um.
   r = s.bridge.raw({ op: "set_locator", time: 32, name: "Drop" });

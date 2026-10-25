@@ -1,6 +1,9 @@
 "use strict";
 // Loop Sketch — reine Logik: Templates laden, Roles mappen, To-Arr-Plan bauen.
 // Ohne Max/Live-Abhaengigkeiten; mit node:test getestet. Node for Max (Live 11): kein ?. / ??.
+//
+// Arrangement-Stil (Song Sketch): pro kontinuierlicher aktiver Region EIN Clip in voller
+// Abschnittslaenge, der den 8-Takt-Session-Loop loopt — keine 8-Bar-Kacheln × N.
 
 var ROLES = ["kick", "bass", "hats", "perc", "synth", "pad", "fx"];
 var ROLE_LABELS = {
@@ -9,6 +12,8 @@ var ROLE_LABELS = {
 };
 var MENU_AUTO = "Auto";
 var MENU_NONE = "Keine";
+var DEFAULT_BPM = 145;
+var BARS_PER_LOOP = 8;
 
 // Spezifischere Stichworte zuerst. Pad und FX getrennt (Song-Sketch-Style Roles).
 var ROLE_KEYWORDS = {
@@ -91,10 +96,29 @@ function resolveMapping(roleNames, tracks, overrides) {
 
 function round3(x) { return Math.round(x * 1000) / 1000; }
 
+// Live 11 MxDCore: Namen mit Leerzeichen → oft "Invalid syntax". Underscore ist sicher.
+function liveSafeName(name) {
+  var s = String(name == null ? "" : name).replace(/\s+/g, "_");
+  return s.length ? s : "Loop";
+}
+
 function trackByIndex(state, idx) {
   var ts = (state && state.tracks) || [];
   for (var i = 0; i < ts.length; i++) if (ts[i].index === idx) return ts[i];
   return null;
+}
+
+// Kanonische Loop-Laenge in Beats: immer ganze 8 Takte (32 Beats bei 4/4), nie kleinere Stuecke.
+function canonicalLoopBeats(source, beatsPerBar) {
+  var bpb = Number(beatsPerBar) > 0 ? Number(beatsPerBar) : 4;
+  var target = BARS_PER_LOOP * bpb;
+  var len = source && Number(source.length);
+  if (!(len > 0.05) || !isFinite(len)) return target;
+  var bars = len / bpb;
+  // Nahe 8 Takte → exakt 8. Sonst auf naechstes Vielfaches von 8 Takten (mindestens 8).
+  if (Math.abs(bars - BARS_PER_LOOP) <= 0.51) return round3(target);
+  var mult = Math.max(1, Math.round(bars / BARS_PER_LOOP));
+  return round3(mult * BARS_PER_LOOP * bpb);
 }
 
 function validateTemplate(tpl) {
@@ -112,6 +136,14 @@ function validateTemplate(tpl) {
       errors.push("section[" + i + "] braucht start_bar und length_bars");
     }
     if (!(Number(s.length_bars) > 0)) errors.push("section[" + i + "] length_bars muss > 0");
+    var lb = Number(s.length_bars);
+    if (lb > 0 && lb % BARS_PER_LOOP !== 0) {
+      errors.push("section[" + i + "] length_bars muss Vielfaches von " + BARS_PER_LOOP + " sein (ganze 8-Takt-Loops)");
+    }
+    var sb = Number(s.start_bar);
+    if (sb > 0 && sb % BARS_PER_LOOP !== 0) {
+      errors.push("section[" + i + "] start_bar muss auf " + BARS_PER_LOOP + "-Takt-Raster liegen");
+    }
   });
   ROLES.forEach(function (role) {
     var def = tpl.roles && tpl.roles[role];
@@ -292,53 +324,42 @@ function activeRegionsForRole(template, role) {
   return regions;
 }
 
-function loopTileLength(source, regionLength) {
-  var len = source && Number(source.length);
-  if (!(len > 0.05)) len = 32;
-  if (regionLength > 0 && len > regionLength) len = regionLength;
-  return len;
-}
-
-// Kachelt den Session-Scene-1-Loop ueber alle aktiven Regionen der Role.
+// Eine Region → ein Arrangement-Clip (volle Region-Laenge). Loop-Klammer = 8-Takt-Quelle.
+// Kein Zerhacken in Dutzende identische 8-Bar-Duplikate.
 function buildRoleTiles(template, role, source) {
   var regions = activeRegionsForRole(template, role);
   var tiles = [];
+  var loopLen = canonicalLoopBeats(source, template.beats_per_bar);
   if (!source) return { tiles: tiles, regions: regions, loop_length: 0 };
   regions.forEach(function (region) {
-    var loopLen = loopTileLength(source, region.length);
-    var t = region.start;
-    var n = 0;
-    while (t < region.end - 1e-6) {
-      var len = Math.min(loopLen, round3(region.end - t));
-      if (!(len > 0.05)) break;
-      // Abschnittslabel am Tile-Start
-      var label = region.label;
-      for (var si = 0; si < template.sections.length; si++) {
-        var sec = template.sections[si];
-        var s0 = sec.start_beat;
-        var s1 = round3(sec.start_beat + sec.length_beats);
-        if (t >= s0 - 1e-9 && t < s1 - 1e-9) {
-          label = sec.label;
-          break;
-        }
+    var len = round3(region.length);
+    if (!(len > 0.05)) return;
+    // Region-Label: erste Section der zusammengefassten Region (Start).
+    var label = region.label;
+    for (var si = 0; si < template.sections.length; si++) {
+      var sec = template.sections[si];
+      var s0 = sec.start_beat;
+      var s1 = round3(sec.start_beat + sec.length_beats);
+      if (region.start >= s0 - 1e-9 && region.start < s1 - 1e-9) {
+        label = sec.label;
+        break;
       }
-      tiles.push({
-        start: round3(t),
-        length: len,
-        name: label,
-        color_index: source.color_index,
-        source_kind: source.kind || "session",
-        source_index: source.index != null ? source.index : 0,
-        source_length: source.length,
-      });
-      n++;
-      t = round3(t + len);
     }
+    tiles.push({
+      start: round3(region.start),
+      length: len,
+      name: liveSafeName(label),
+      color_index: source.color_index,
+      source_kind: source.kind || "session",
+      source_index: source.index != null ? source.index : 0,
+      source_length: source.length,
+      loop_length: loopLen,
+    });
   });
   return {
     tiles: tiles,
     regions: regions,
-    loop_length: loopTileLength(source, template.length_beats),
+    loop_length: loopLen,
   };
 }
 
@@ -353,7 +374,8 @@ function scene1Source(track) {
 }
 
 function buildPlan(template, state, mapping, options) {
-  var opts = Object.assign({ set_tempo: false }, options || {});
+  // Standard: Tempo immer 145 (Musik ausschliesslich 145 BPM). set_tempo:false unterdrueckt.
+  var opts = Object.assign({ set_tempo: true, tempo: DEFAULT_BPM }, options || {});
   var plan = {
     template_id: template.id,
     template_name: template.name,
@@ -364,9 +386,13 @@ function buildPlan(template, state, mapping, options) {
     length_beats: template.length_beats,
     length_bars: template.length_bars,
   };
-  if (opts.set_tempo && template.bpm_hint) plan.tempo = template.bpm_hint;
+  if (opts.set_tempo !== false) {
+    var bpm = opts.tempo != null ? Number(opts.tempo) : DEFAULT_BPM;
+    if (!(bpm >= 20 && bpm <= 999)) bpm = DEFAULT_BPM;
+    plan.tempo = bpm;
+  }
   plan.locators = template.sections.map(function (s) {
-    return { time: s.start_beat, name: s.label };
+    return { time: s.start_beat, name: liveSafeName(s.label) };
   });
 
   ROLES.forEach(function (role) {
@@ -442,12 +468,16 @@ module.exports = {
   ROLE_KEYWORDS: ROLE_KEYWORDS,
   MENU_AUTO: MENU_AUTO,
   MENU_NONE: MENU_NONE,
+  DEFAULT_BPM: DEFAULT_BPM,
+  BARS_PER_LOOP: BARS_PER_LOOP,
   scoreTrack: scoreTrack,
   autoMapRoles: autoMapRoles,
   resolveMapping: resolveMapping,
   menuItems: menuItems,
   menuItemForTrack: menuItemForTrack,
   trackByIndex: trackByIndex,
+  liveSafeName: liveSafeName,
+  canonicalLoopBeats: canonicalLoopBeats,
   validateTemplate: validateTemplate,
   normalizeTemplate: normalizeTemplate,
   loadTemplateFromObject: loadTemplateFromObject,
