@@ -34,6 +34,7 @@ FakeLive.prototype.addScene = function () {
 FakeLive.prototype.makeClip = function (opts) {
   opts = opts || {};
   var length = opts.length != null ? opts.length : 32;
+  var audio = !!opts.audio;
   return this.reg({
     _type: "Clip",
     name: opts.name != null ? opts.name : "loop",
@@ -46,7 +47,9 @@ FakeLive.prototype.makeClip = function (opts) {
     end_time: opts.end_time != null ? opts.end_time : (opts.start_time || 0) + length,
     end_marker: opts.end_marker != null ? opts.end_marker : length,
     start_marker: 0,
-    notes: opts.notes != null ? opts.notes : [[0, 1, 60, 100]],
+    is_midi_clip: audio ? 0 : 1,
+    is_audio_clip: audio ? 1 : 0,
+    notes: opts.notes != null ? opts.notes : (audio ? [] : [[0, 1, 60, 100]]),
     envelopes: opts.envelopes || {},
   });
 };
@@ -136,6 +139,8 @@ FakeLive.prototype.copyClip = function (clip, overrides) {
     end_time: overrides.end_time != null ? overrides.end_time : (overrides.start_time || 0) + length,
     end_marker: overrides.end_marker != null ? overrides.end_marker : length,
     start_marker: 0,
+    is_midi_clip: clip.is_midi_clip,
+    is_audio_clip: clip.is_audio_clip,
     notes: (clip.notes || []).map(function (n) { return n.slice(); }),
     envelopes: cloneEnvelopes(clip),
   });
@@ -177,7 +182,47 @@ FakeLive.prototype.invoke = function (obj, fn, args) {
       dest.clip = self.copyClip(obj.clip);
       return undefined;
     }
+    case "Clip.get_notes": {
+      var out = ["notes"];
+      (obj.notes || []).forEach(function (n) {
+        // Live: pitch, time, duration, velocity, mute — unsere Notes: [time, dur, pitch, vel]
+        out.push(n[2], n[0], n[1], n[3], 0);
+      });
+      return out;
+    }
+    case "Clip.select_all_notes":
+      obj._noteWrite = { mode: "replace", expected: 0, buffer: [] };
+      return undefined;
+    case "Clip.replace_selected_notes":
+      if (!obj._noteWrite) obj._noteWrite = { mode: "replace", expected: 0, buffer: [] };
+      obj._noteWrite.mode = "replace";
+      return undefined;
+    case "Clip.set_notes":
+      obj._noteWrite = { mode: "set", expected: 0, buffer: [] };
+      return undefined;
+    case "Clip.notes":
+      if (!obj._noteWrite) obj._noteWrite = { mode: "set", expected: 0, buffer: [] };
+      obj._noteWrite.expected = Number(args[0]) || 0;
+      obj._noteWrite.buffer = [];
+      return undefined;
+    case "Clip.note": {
+      if (!obj._noteWrite) throw new Error("note ohne set_notes/replace_selected_notes");
+      // Live args: pitch, time, duration, velocity, mute → intern [time, dur, pitch, vel]
+      obj._noteWrite.buffer.push([Number(args[1]), Number(args[2]), Number(args[0]), Number(args[3])]);
+      return undefined;
+    }
+    case "Clip.done":
+      if (!obj._noteWrite) throw new Error("done ohne Noten-Schreibmodus");
+      obj.notes = obj._noteWrite.buffer.map(function (n) { return n.slice(); });
+      obj._noteWrite = null;
+      return undefined;
     case "DeviceParameter.str_for_value": return obj.show(Number(args[0]));
+    case "Track.delete_device": {
+      var di = Number(args[0]);
+      if (di < 0 || di >= obj.devices.length) throw new Error("Device-Index ungueltig");
+      obj.devices.splice(di, 1);
+      return undefined;
+    }
     case "Track.duplicate_clip_to_arrangement": {
       var clip = args[0];
       var start = Number(args[1]);
@@ -253,8 +298,9 @@ FakeLive.prototype.LiveAPIClass = function () {
       this._obj.length = Number(value) - Number(this._obj.start_time);
       this._obj.end_marker = this._obj.length;
     }
-    if (prop === "end_marker") {
+    if (prop === "end_marker" || prop === "length") {
       this._obj.length = Number(value);
+      this._obj.end_marker = Number(value);
       if (this._obj.start_time != null) this._obj.end_time = this._obj.start_time + Number(value);
     }
   };

@@ -152,6 +152,7 @@ Orchestrator.prototype._remote = function (report, msg) {
 Orchestrator.prototype._insertMissingDevices = function (plan, report) {
   var self = this;
   var d = self.deps;
+  report._inserted = report._inserted || [];
   var missing = plan.devices.filter(function (dev) { return !dev.present; });
   return missing.reduce(function (p, dev) {
     return p.then(function () {
@@ -164,12 +165,48 @@ Orchestrator.prototype._insertMissingDevices = function (plan, report) {
           self.state = state;
           if (core.findDevice(core.trackByIndex(state, dev.track), dev.class_name)) {
             report.devices_inserted.push(dev.device + " -> " + track.name);
+            report._inserted.push({ track: dev.track, class_name: dev.class_name, device: dev.device });
           } else {
             report.warnings.push(dev.device + " wurde auf '" + track.name + "' nicht gefunden.");
           }
         }, function (err) {
           report.warnings.push(dev.device + " nicht eingefuegt: " + message(err));
         });
+    });
+  }, Promise.resolve());
+};
+
+// Geraete wieder entfernen, wenn keine Envelope geschrieben werden kann (kein Orphan-FX).
+Orchestrator.prototype._pruneOrphanDevices = function (plan, targets, report) {
+  var self = this;
+  var d = self.deps;
+  var needed = {};
+  plan.tracks.forEach(function (t) {
+    t.clips.forEach(function (c) {
+      c.envelopes = (c.envelopes || []).filter(function (e) {
+        var key = t.track + "|" + e.class_name + "|" + e.parameter;
+        return !!targets[key] && core.stepsHaveMotion(e.target, e.steps);
+      });
+      c.envelopes.forEach(function (e) {
+        needed[t.track + "|" + e.class_name] = true;
+      });
+    });
+  });
+  var inserted = report._inserted || [];
+  return inserted.reduce(function (p, ins) {
+    return p.then(function () {
+      if (needed[ins.track + "|" + ins.class_name]) return null;
+      var track = core.trackByIndex(self.state, ins.track);
+      report.warnings.push(ins.device + " auf '" + (track ? track.name : "?") +
+        "' wieder entfernt (keine schreibbare Automation).");
+      return attempt(report, "Entferne " + ins.device, function () {
+        return d.lom({ op: "delete_device", track: ins.track, class_name: ins.class_name });
+      }).then(function () {
+        report.devices_inserted = report.devices_inserted.filter(function (s) {
+          return s.indexOf(ins.device + " -> ") !== 0;
+        });
+        return d.lom({ op: "get_state" }).then(function (state) { self.state = state; });
+      });
     });
   }, Promise.resolve());
 };
@@ -245,17 +282,18 @@ Orchestrator.prototype.apply = function () {
         });
       }, Promise.resolve());
     }).then(function () {
-      if (self.options.apply_automation) return self._insertMissingDevices(plan, report);
+      if (self.options.apply_automation && plan.devices.length) {
+        return self._insertMissingDevices(plan, report);
+      }
     }).then(function () {
       return self._resolveTargets(plan, report);
     }).then(function (targets) {
+      return self._pruneOrphanDevices(plan, targets, report).then(function () { return targets; });
+    }).then(function (targets) {
       if (!plan.tracks.length) return null;
       var needsHelper = plan.tracks.some(function (t) {
-        return t.source_loop && t.source_loop.kind === "session" && (t.clips || []).some(function (c) {
-          return (c.envelopes || []).some(function (e) {
-            return !!targets[t.track + "|" + e.class_name + "|" + e.parameter] &&
-              !core.isNeutral(e.target, e.steps);
-          });
+        return t.can_automate && (t.clips || []).some(function (c) {
+          return (c.envelopes || []).length > 0;
         });
       });
       var start = needsHelper
@@ -296,6 +334,7 @@ Orchestrator.prototype._writeEnvelope = function (report, t, scene, target, step
 };
 
 // Vorhandenen Loop der Spur an die Abschnittsposition legen (Inhalt + Farbe), optional mit Automation.
+// Reihenfolge bei Automation: kopieren -> auf Abschnittslaenge strecken -> Envelopes -> Arrangement.
 Orchestrator.prototype._buildClip = function (t, c, scene, targets, report) {
   var self = this;
   var d = self.deps;
@@ -305,20 +344,27 @@ Orchestrator.prototype._buildClip = function (t, c, scene, targets, report) {
     report.warnings.push(label + ": kein Quell-Loop.");
     return Promise.resolve();
   }
-  var wantEnv = (c.envelopes || []).some(function (e) {
+  var envs = (c.envelopes || []).filter(function (e) {
     var target = targets[t.track + "|" + e.class_name + "|" + e.parameter];
-    return !!target && !core.isNeutral(e.target, e.steps);
+    return !!target && core.stepsHaveMotion(e.target, e.steps);
   });
-  var useHelper = wantEnv && source.kind === "session" && scene !== null && scene !== undefined;
+  var useHelper = envs.length > 0 && t.can_automate && scene !== null && scene !== undefined;
 
   var place = useHelper
     ? d.lom({
-      op: "copy_clip_to_slot", track: t.track, source_kind: "session",
+      op: "copy_clip_to_slot", track: t.track, source_kind: source.kind,
       source_index: source.index, dest_scene: scene,
     }).then(function () {
-      return c.envelopes.reduce(function (p, e) {
+      return d.lom({
+        op: "stretch_session_clip", track: t.track, scene: scene, length: c.length,
+        color_index: c.color_index, name: c.name,
+      });
+    }).then(function (stretched) {
+      if (stretched && stretched.note_count === 0) {
+        throw new Error("Hilfsclip hat keine MIDI-Noten (Quelle pruefen)");
+      }
+      return envs.reduce(function (p, e) {
         var target = targets[t.track + "|" + e.class_name + "|" + e.parameter];
-        if (!target || core.isNeutral(e.target, e.steps)) return p;
         var steps = e.steps.map(function (s) { return [s[0], s[1], target.toRaw(s[2])]; });
         return p.then(function () {
           if (report.remote_down) return null;
@@ -338,10 +384,6 @@ Orchestrator.prototype._buildClip = function (t, c, scene, targets, report) {
     : d.lom({
       op: "place_loop", track: t.track, source_kind: source.kind, source_index: source.index,
       time: c.start, length: c.length, name: c.name, color_index: c.color_index,
-    }).then(function () {
-      if (wantEnv && source.kind !== "session") {
-        report.warnings.push(label + ": Automation uebersprungen (Quelle nur im Arrangement, kein Session-Slot).");
-      }
     });
 
   return place.then(function () {
@@ -374,9 +416,8 @@ Orchestrator.prototype._finish = function (scene, report) {
     self.status(text);
     var summary = core.formatSummary(self.analysis, self.mapping(), self.state);
     if (report.clips > 0) {
-      summary += "\n\nHinweis: Pro Songteil wurde der vorhandene Loop der Spur (Session/Arrangement am Anfang) " +
-        "dupliziert und auf die Abschnittslaenge geloopt – Farbe wie der Original-Loop. " +
-        "Automationen liegen in den Arrangement-Automationsspuren.";
+      summary += "\n\nHinweis: Pro aktivem Songteil liegt dein Loop (mit Noten/Audio) im Arrangement, " +
+        "Farbe wie das Original. Auto Filter/Utility nur wenn Automation wirklich geschrieben wurde.";
     }
     if (report.warnings.length) summary += "\n\nHinweise beim Anwenden:\n  " + report.warnings.join("\n  ");
     self.deps.ui.summary(summary);

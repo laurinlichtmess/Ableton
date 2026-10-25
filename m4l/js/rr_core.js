@@ -189,10 +189,31 @@ function sliceAutomation(points, startBeat, lengthBeats) {
 function round3(x) { return Math.round(x * 1000) / 1000; }
 
 function isNeutral(target, steps) {
+  if (!steps || !steps.length) return true;
   var neutral = NEUTRAL[target];
   return steps.every(function (s) {
     return target === "filter_cutoff" ? s[2] >= neutral * 0.98 : s[2] >= neutral - 0.5;
   });
+}
+
+// Globale Kurve hat hoerbare Bewegung (nicht nur offenes Filter / 0 dB).
+function pointsHaveMotion(target, points) {
+  if (!points || !points.length) return false;
+  var vals = points.map(function (p) { return Number(p.value); }).filter(isFinite);
+  if (vals.length < 1) return false;
+  var mn = Math.min.apply(null, vals);
+  var mx = Math.max.apply(null, vals);
+  if (target === "filter_cutoff") {
+    return mn < NEUTRAL.filter_cutoff * 0.98 || (mx - mn) > 300;
+  }
+  if (target === "gain") {
+    return mn < NEUTRAL.gain - 0.5 || (mx - mn) > 1;
+  }
+  return (mx - mn) > 0;
+}
+
+function stepsHaveMotion(target, steps) {
+  return !isNeutral(target, steps);
 }
 
 function findDevice(track, className) {
@@ -222,6 +243,7 @@ function trackByIndex(state, idx) {
 // Plan aus Analyse + Live-Zustand + Optionen. Enthaelt Werte noch in Hz/dB; die Umrechnung in
 // Parameter-Rohwerte passiert beim Ausfuehren (braucht str_for_value aus Live).
 // Arrangement: vorhandene ~8-Takt-Loops der Spur werden pro aktivem Songteil platziert (keine leeren Clips).
+// Geraete nur planen, wenn spaeter wirklich nicht-neutrale Automation geschrieben wird (kein Orphan-FX).
 function buildPlan(analysis, state, options, mapping) {
   var opts = Object.assign({ build_arrangement: true, apply_automation: true, set_tempo: true }, options || {});
   var sections = analysis.sections || [];
@@ -238,27 +260,40 @@ function buildPlan(analysis, state, options, mapping) {
       plan.warnings.push("Spur " + (idx + 1) + " fuer " + (STEM_LABELS[stem.name] || stem.name) + " existiert nicht mehr.");
       return;
     }
-    var automation = opts.apply_automation ? (stem.automation || []) : [];
-    automation.forEach(function (a) {
-      var cls = a.class_name || DEVICE_CLASS[a.device];
-      if (!plan.devices.some(function (d) { return d.track === idx && d.class_name === cls; })) {
-        plan.devices.push({ track: idx, device: a.device, class_name: cls, present: !!findDevice(track, cls) });
-      }
-    });
     var source = track.source_loop || null;
     var label = STEM_LABELS[stem.name] || stem.name;
     if (opts.build_arrangement && !source) {
       plan.warnings.push("'" + track.name + "' (" + label + "): kein Loop am Spuranfang gefunden " +
         "(Session-Slot oder Arrangement-Clip bei Takt 1). Spur ohne Arrangement-Clips.");
     }
+    // Automation: Session-Loop oder Arrangement-MIDI (Noten → Hilfs-Slot → write_envelope).
+    // Arrangement-Audio: keine Clip-Envelopes in Live 11 ohne Session-Quelle → kein FX.
+    var canAutomate = !!(opts.apply_automation && source &&
+      (source.kind === "session" || (source.kind === "arrangement" && track.has_midi_input)));
+    var automation = [];
+    if (canAutomate) {
+      automation = (stem.automation || []).filter(function (a) {
+        return pointsHaveMotion(a.target, a.points);
+      });
+    } else if (opts.apply_automation && source && source.kind === "arrangement" && !track.has_midi_input &&
+      (stem.automation || []).some(function (a) { return pointsHaveMotion(a.target, a.points); })) {
+      plan.warnings.push("'" + track.name + "' (" + label + "): Automation/Effekte uebersprungen " +
+        "(Audiospur nur im Arrangement – Loop in einen Session-Slot kopieren fuer Utility/Filter).");
+    }
     var clips = [];
     if (opts.build_arrangement && source) {
       sections.forEach(function (s, i) {
         var active = !stem.active_sections || stem.active_sections[i] !== false;
         if (!active) return;
-        var envs = automation.map(function (a) {
-          return { target: a.target, device: a.device, class_name: a.class_name || DEVICE_CLASS[a.device],
-            parameter: a.parameter, unit: a.unit, steps: sliceAutomation(a.points, s.start_beat, s.length_beats) };
+        var envs = [];
+        automation.forEach(function (a) {
+          var steps = sliceAutomation(a.points, s.start_beat, s.length_beats);
+          if (!stepsHaveMotion(a.target, steps)) return;
+          envs.push({
+            target: a.target, device: a.device,
+            class_name: a.class_name || DEVICE_CLASS[a.device],
+            parameter: a.parameter, unit: a.unit, steps: steps,
+          });
         });
         clips.push({
           section: i,
@@ -273,14 +308,35 @@ function buildPlan(analysis, state, options, mapping) {
         });
       });
     }
+    // Geraete nur, wenn mindestens ein Clip eine echte Envelope bekommt.
+    var neededDevices = {};
+    clips.forEach(function (c) {
+      c.envelopes.forEach(function (e) {
+        neededDevices[e.class_name] = e.device;
+      });
+    });
+    Object.keys(neededDevices).forEach(function (cls) {
+      if (!plan.devices.some(function (d) { return d.track === idx && d.class_name === cls; })) {
+        plan.devices.push({
+          track: idx, device: neededDevices[cls], class_name: cls,
+          present: !!findDevice(track, cls),
+        });
+      }
+    });
     if (clips.length) {
       plan.tracks.push({
         track: idx,
         name: track.name,
         stem: stem.name,
         source_loop: source,
+        can_automate: canAutomate,
         clips: clips,
       });
+    } else if (opts.build_arrangement && source && stem.present !== false) {
+      var anyActive = !stem.active_sections || stem.active_sections.some(function (a) { return a !== false; });
+      if (!anyActive) {
+        plan.warnings.push("'" + track.name + "' (" + label + "): in der Referenz nirgends aktiv – keine Clips.");
+      }
     }
   });
   return plan;
@@ -349,6 +405,8 @@ module.exports = {
   buildInverseMap: buildInverseMap,
   sliceAutomation: sliceAutomation,
   isNeutral: isNeutral,
+  pointsHaveMotion: pointsHaveMotion,
+  stepsHaveMotion: stepsHaveMotion,
   findDevice: findDevice,
   findParam: findParam,
   trackByIndex: trackByIndex,

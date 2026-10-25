@@ -129,7 +129,9 @@ test("Anwenden baut Tempo, Locators, Geraete, Clips mit Envelopes im Arrangement
   assert.equal(report.locators, analysis.sections.length);
   assert.ok(report.clips >= activeSynth && report.envelopes > 0);
   assert.match(s.ui.statuses.pop(), /^Fertig: /);
-  assert.ok(s.ui.summaries.pop().indexOf("vorhandene Loop") !== -1);
+  var summary = s.ui.summaries.pop();
+  assert.ok(summary.indexOf("Loop (mit Noten/Audio)") !== -1);
+  assert.ok(summary.indexOf("nur wenn Automation wirklich geschrieben") !== -1);
 });
 
 test("Ohne Remote Script: Locators und Clips trotzdem, Automation mit Hinweis uebersprungen", async function () {
@@ -189,8 +191,58 @@ test("Manuelle Zuordnung und Optionen werden beachtet", async function () {
   assert.equal(s.live.song.cue_points.length, 0);
   assert.equal(s.live.song.tempo, 120);
   assert.equal(report.clips, 0);
-  assert.deepEqual(s.remoteCalls.filter(function (c) { return c.cmd === "load_device"; })
-    .map(function (c) { return c.track_index + ":" + c.device; }), ["3:Auto Filter"]);
+  // Ohne Arrangement keine Envelopes → kein Auto Filter (Orphan-FX-Regel).
+  assert.deepEqual(s.remoteCalls.filter(function (c) { return c.cmd === "load_device"; }), []);
+  assert.equal(report.devices_inserted.length, 0);
+});
+
+test("Arrangement-MIDI-Quelle: Apply legt Noten und Automation ohne Orphan-FX", async function () {
+  var s = setup();
+  // Session leeren, Loop nur im Arrangement (CursorTest-Fall).
+  s.live.song.tracks[2].clip_slots[0].clip = null;
+  s.live.song.tracks[2].arrangement_clips.push(s.live.makeClip({
+    name: "lead arr", length: 32, color_index: 14, start_time: 0,
+    notes: [[0, 0.5, 60, 100], [1, 0.5, 64, 100]],
+  }));
+  s.live.song.tracks[0].clip_slots[0].clip = null;
+  s.live.song.tracks[0].arrangement_clips.push(s.live.makeClip({
+    name: "kick arr", length: 32, color_index: 69, start_time: 0, notes: [[0, 1, 36, 100]],
+  }));
+  s.live.song.tracks[1].clip_slots[0].clip = null;
+  s.live.song.tracks[1].arrangement_clips.push(s.live.makeClip({
+    name: "bass arr", length: 32, color_index: 26, start_time: 0, notes: [[0, 1, 40, 100]],
+  }));
+  s.orch.setFile("/ref.mp3");
+  await s.orch.analyze();
+  var report = await s.orch.apply();
+  var build = s.live.song.tracks[2].arrangement_clips.find(function (c) {
+    return c.name === "Build" || (c.start_time === analysis.sections[1].start_beat && c.notes && c.notes.length);
+  });
+  assert.ok(build, "Build-Clip im Arrangement");
+  assert.ok(build.notes.length >= 2, "Noten aus Arrangement-Quelle");
+  assert.equal(build.color_index, 14);
+  assert.ok(report.envelopes > 0, "Automation trotz Arrangement-Quelle");
+  assert.ok(report.devices_inserted.some(function (d) { return /Auto Filter/.test(d); }));
+  assert.equal(s.live.song.scenes.length, 1, "Hilfs-Szene aufgeraeumt");
+});
+
+test("place_loop behält MIDI-Noten; leerer MIDI-Quellclip wird abgelehnt", async function () {
+  var s = setup();
+  var bridge = s.bridge;
+  var placed = await bridge.lom({
+    op: "place_loop", track: 2, source_kind: "session", source_index: 0,
+    time: 32, length: 32, name: "Build", color_index: 14,
+  });
+  assert.ok(placed.note_count > 0);
+  var arr = s.live.song.tracks[2].arrangement_clips.find(function (c) { return c.start_time === 32; });
+  assert.ok(arr.notes.length > 0);
+  assert.equal(arr.color_index, 14);
+  s.live.song.tracks[2].clip_slots[0].clip.notes = [];
+  var rejected = await bridge.lom({
+    op: "place_loop", track: 2, source_kind: "session", source_index: 0,
+    time: 64, length: 32, name: "Drop",
+  }).then(function () { return null; }, function (e) { return e.message; });
+  assert.match(rejected, /keine MIDI-Noten/);
 });
 
 test("Anwenden ohne Analyse und paralleles Anwenden werden abgefangen", async function () {

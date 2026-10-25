@@ -140,12 +140,36 @@ test("buildPlan: ohne Arrangement-Option keine Clips; fehlender Loop wird gemeld
   assert.equal(plan.locators.length, 0);
   assert.equal(plan.tempo, null);
   assert.equal(plan.tracks.length, 0);
-  assert.ok(plan.devices.some(function (d) { return d.track === 4; }));
+  // Ohne Arrangement-Clips keine Envelopes → keine Geraete (kein Orphan-FX).
+  assert.equal(plan.devices.length, 0);
   var noLoop = JSON.parse(JSON.stringify(TRACKS));
   noLoop[0].source_loop = null;
   var plan2 = core.buildPlan(analysis, { tracks: noLoop }, {}, { kick: 0 });
   assert.ok(plan2.warnings.some(function (w) { return /kein Loop/.test(w); }));
   assert.ok(!plan2.tracks.some(function (t) { return t.stem === "kick"; }));
+});
+
+test("buildPlan: flache Automation plant kein Filter/Utility", function () {
+  var flat = JSON.parse(JSON.stringify(analysis));
+  var synth = flat.stems.find(function (s) { return s.name === "synth"; });
+  synth.automation = [{
+    target: "filter_cutoff", device: "Auto Filter", class_name: "AutoFilter",
+    parameter: "Frequency", unit: "Hz",
+    points: [{ beat: 0, value: 20000 }, { beat: 64, value: 20000 }],
+  }];
+  var kick = flat.stems.find(function (s) { return s.name === "kick"; });
+  kick.automation = [{
+    target: "gain", device: "Utility", class_name: "StereoGain",
+    parameter: "Gain", unit: "dB",
+    points: [{ beat: 0, value: 0 }, { beat: 64, value: 0 }],
+  }];
+  var plan = core.buildPlan(flat, { tracks: TRACKS }, {}, { kick: 0, synth: 4 });
+  assert.equal(plan.devices.length, 0);
+  plan.tracks.forEach(function (t) {
+    t.clips.forEach(function (c) { assert.equal(c.envelopes.length, 0); });
+  });
+  assert.ok(core.pointsHaveMotion("filter_cutoff", [{ beat: 0, value: 400 }, { beat: 32, value: 8000 }]));
+  assert.ok(!core.pointsHaveMotion("filter_cutoff", [{ beat: 0, value: 20000 }, { beat: 32, value: 20000 }]));
 });
 
 test("buildPlan: ohne Automation werden keine Geraete geplant", function () {

@@ -99,11 +99,14 @@ typisch 1–8 Takte) – den nutzt Anwenden als Quelle.
   MIDI- und Audiospuren funktionieren, solange ein Loop existiert (Live 11 kann keine neuen leeren
   Audio-Clips anlegen – vorhandene werden nur kopiert). Fehlt der Loop, erscheint ein Hinweis und die
   Spur bekommt keine Arrangement-Clips.
-- **Automation** (optional): Bei Session-Quelle wird der Loop kurz in eine Hilfs-Szene kopiert, Envelopes
-  schreibt das Remote Script (`write_envelope`), dann `duplicate_clip_to_arrangement`. Automationen liegen
-  danach in den Arrangement-Automationsspuren. Ohne Remote Script: Loops und Locators trotzdem, ohne Kurven.
-- **Effekte**: Ist auf der Spur noch kein Auto Filter (`AutoFilter`) bzw. Utility (`StereoGain`), lädt das
-  Remote Script ihn ans Ende der Geräte-Kette.
+- **Automation** (optional): Nur bei **hörbarer** Kurve (nicht flach/neutral). Session-Loop oder
+  Arrangement-**MIDI** wird in eine Hilfs-Szene materialisiert (Session: `duplicate_clip_to`; Arrangement-MIDI:
+  `create_clip` + Noten kopieren), Envelopes schreibt das Remote Script (`write_envelope`), dann
+  `duplicate_clip_to_arrangement`. Arrangement-**Audio** ohne Session-Loop: Clips ja, Utility/Filter
+  übersprungen (Hinweis im Textfeld). Ohne Remote Script: Loops/Locators trotzdem, ohne Kurven.
+- **Effekte**: Auto Filter / Utility nur, wenn danach wirklich Envelopes geschrieben werden. Schlägt das
+  Schreiben fehl oder die Kurve ist leer/neutral, wird ein gerade eingefügtes Gerät wieder entfernt
+  (kein Orphan-FX).
 - Hz/dB werden über `str_for_value` des jeweiligen Parameters in Live-Rohwerte umgerechnet, damit die Kurven
   unabhängig von der internen Skalierung stimmen.
 
